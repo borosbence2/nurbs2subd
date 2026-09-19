@@ -49,6 +49,26 @@ struct SurfaceCurvature {
     double k2;       ///< Smaller principal curvature, H - sqrt(H^2 - K).
 };
 
+/// Curvature from raw derivative vectors, for any surface that can produce
+/// them.
+///
+/// Exposed separately from the `SurfaceDerivatives` overloads below because the
+/// Catmull-Clark limit surface reports its derivatives as plain vectors, and
+/// its curvature has to be computed by exactly the same formulas as the NURBS
+/// it is being compared against. Two implementations of the same mathematics,
+/// one per surface type, is how a curvature-deviation metric ends up measuring
+/// the difference between two formulas instead of between two surfaces.
+std::optional<SurfaceCurvature> curvature_from_derivatives(const Eigen::Vector3d& du,
+                                                           const Eigen::Vector3d& dv,
+                                                           const Eigen::Vector3d& duu,
+                                                           const Eigen::Vector3d& duv,
+                                                           const Eigen::Vector3d& dvv);
+
+/// Unit normal of a surface given its first partials. Same degenerate case as
+/// the overload below.
+std::optional<Eigen::Vector3d> normal_from_derivatives(const Eigen::Vector3d& du,
+                                                       const Eigen::Vector3d& dv);
+
 /// Unit normal `(Su x Sv) / |Su x Sv|`.
 ///
 /// Returns `nullopt` where the partials vanish or are parallel, which is where

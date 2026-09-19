@@ -9,8 +9,13 @@ configure_file(
 
 add_library(n2s_core STATIC
     include/n2s/build_info.hpp
+    include/n2s/experiment/runner.hpp
+    include/n2s/fit/layout.hpp
     include/n2s/io/case_json.hpp
     include/n2s/io/nurbs_json.hpp
+    include/n2s/metrics/seam_error.hpp
+    include/n2s/metrics/statistics.hpp
+    include/n2s/metrics/surface_error.hpp
     include/n2s/nurbs/basis.hpp
     include/n2s/nurbs/curve.hpp
     include/n2s/nurbs/detail/binomial.hpp
@@ -27,8 +32,13 @@ add_library(n2s_core STATIC
     include/n2s/trim/trim_loop.hpp
     include/n2s/trim/triangulation.hpp
     include/n2s/trim/validate.hpp
+    src/experiment/runner.cpp
+    src/fit/layout.cpp
     src/io/case_json.cpp
     src/io/nurbs_json.cpp
+    src/metrics/seam_error.cpp
+    src/metrics/statistics.cpp
+    src/metrics/surface_error.cpp
     src/nurbs/basis.cpp
     src/nurbs/differential.cpp
     src/nurbs/knot_insertion.cpp

@@ -21,8 +21,9 @@ void require_second_order(const SurfaceDerivatives& d) {
 
 } // namespace
 
-std::optional<Eigen::Vector3d> surface_normal(const SurfaceDerivatives& d) {
-    const Eigen::Vector3d cross = d.du().cross(d.dv());
+std::optional<Eigen::Vector3d> normal_from_derivatives(const Eigen::Vector3d& du,
+                                                       const Eigen::Vector3d& dv) {
+    const Eigen::Vector3d cross = du.cross(dv);
     const double length = cross.norm();
 
     // Catches both a vanishing partial and two parallel partials; either way
@@ -30,7 +31,48 @@ std::optional<Eigen::Vector3d> surface_normal(const SurfaceDerivatives& d) {
     if (length < tol::kDegenerateDerivative) {
         return std::nullopt;
     }
-    return cross / length;
+    return Eigen::Vector3d{cross / length};
+}
+
+std::optional<Eigen::Vector3d> surface_normal(const SurfaceDerivatives& d) {
+    return normal_from_derivatives(d.du(), d.dv());
+}
+
+std::optional<SurfaceCurvature> curvature_from_derivatives(const Eigen::Vector3d& du,
+                                                           const Eigen::Vector3d& dv,
+                                                           const Eigen::Vector3d& duu,
+                                                           const Eigen::Vector3d& duv,
+                                                           const Eigen::Vector3d& dvv) {
+    const std::optional<Eigen::Vector3d> normal = normal_from_derivatives(du, dv);
+    if (!normal.has_value()) {
+        return std::nullopt;
+    }
+
+    const FirstFundamentalForm first{du.squaredNorm(), du.dot(dv), dv.squaredNorm()};
+    const double det = first.determinant();
+    if (std::abs(det) < tol::kDegenerateDerivative) {
+        return std::nullopt;
+    }
+
+    const SecondFundamentalForm second{normal->dot(duu), normal->dot(duv), normal->dot(dvv)};
+
+    const double gaussian = (second.l * second.n - second.m * second.m) / det;
+    const double mean =
+        (first.e * second.n - 2.0 * first.f * second.m + first.g * second.l) / (2.0 * det);
+
+    // k = H +- sqrt(H^2 - K). The discriminant is non-negative in exact
+    // arithmetic (it is the squared half-difference of the principal
+    // curvatures) but rounds below zero at umbilic points, where the two
+    // curvatures coincide; clamping there is the correct answer, not a fudge.
+    const double discriminant = mean * mean - gaussian;
+    const double root = discriminant > 0.0 ? std::sqrt(discriminant) : 0.0;
+
+    return SurfaceCurvature{
+        .mean = mean,
+        .gaussian = gaussian,
+        .k1 = mean + root,
+        .k2 = mean - root,
+    };
 }
 
 FirstFundamentalForm first_fundamental_form(const SurfaceDerivatives& d) {
@@ -58,35 +100,7 @@ std::optional<SecondFundamentalForm> second_fundamental_form(const SurfaceDeriva
 
 std::optional<SurfaceCurvature> surface_curvature(const SurfaceDerivatives& d) {
     require_second_order(d);
-
-    const std::optional<SecondFundamentalForm> second = second_fundamental_form(d);
-    if (!second.has_value()) {
-        return std::nullopt;
-    }
-
-    const FirstFundamentalForm first = first_fundamental_form(d);
-    const double det = first.determinant();
-    if (std::abs(det) < tol::kDegenerateDerivative) {
-        return std::nullopt;
-    }
-
-    const double gaussian = (second->l * second->n - second->m * second->m) / det;
-    const double mean =
-        (first.e * second->n - 2.0 * first.f * second->m + first.g * second->l) / (2.0 * det);
-
-    // k = H +- sqrt(H^2 - K). The discriminant is non-negative in exact
-    // arithmetic (it is the squared half-difference of the principal
-    // curvatures) but rounds below zero at umbilic points, where the two
-    // curvatures coincide; clamping there is the correct answer, not a fudge.
-    const double discriminant = mean * mean - gaussian;
-    const double root = discriminant > 0.0 ? std::sqrt(discriminant) : 0.0;
-
-    return SurfaceCurvature{
-        .mean = mean,
-        .gaussian = gaussian,
-        .k1 = mean + root,
-        .k2 = mean - root,
-    };
+    return curvature_from_derivatives(d.du(), d.dv(), d.duu(), d.duv(), d.dvv());
 }
 
 } // namespace n2s

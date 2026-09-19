@@ -1,0 +1,20 @@
+{
+  "name": "sweep_layout_density",
+
+  "_comment": "How the baseline error falls as the layout is refined. The axes are a Cartesian product, so this is a 3x3 grid of layouts; the square entries (rows == columns) are the ones to read for a like-for-like density comparison, and the off-diagonal ones show what anisotropy in the layout costs.",
+
+  "base": {
+    "name": "layout_density",
+    "case": "../../data/saddle_square_with_circular_hole_r0.25.json",
+    "sampling": { "max_segment_length": 0.08, "max_sagitta": 0.008 },
+    "refinement": { "max_triangle_area": 0.05, "max_vertices": 2000 },
+    "error": { "samples_per_face": 3, "nurbs_samples_per_side": 16 },
+    "boundary": { "samples_per_edge": 16 },
+    "write_samples": false
+  },
+
+  "axes": {
+    "layout_rows": [5, 7, 9],
+    "layout_columns": [5, 7, 9]
+  }
+}

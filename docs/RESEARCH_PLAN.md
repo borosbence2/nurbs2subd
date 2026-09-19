@@ -144,21 +144,21 @@ but the thesis figures themselves need the thesis data, as R1 does.
 
 ### M5 — Metrics and experiment harness
 Tasks:
-- [ ] Metrics module:
-  - Parametric error: `|L(x) − S(φ(x))|` using the known domain correspondence.
-  - Geometric error: limit sample → closest point on the trimmed NURBS.
-  - Two-sided Hausdorff and RMS distance (dense sampling both ways).
-  - Boundary deviation: limit boundary vs the trim curve image on the surface.
-  - Normal deviation (degrees), curvature deviation.
-  - Seam metrics for two patches: positional gap and normal angle along the seam.
-- [ ] CLI `nurbs2subd run <config.json>`: runs the pipeline, writes
+- [x] Metrics module:
+  - [x] Parametric error: `|L(x) − S(φ(x))|` using the known domain correspondence.
+  - [x] Geometric error: limit sample → closest point on the trimmed NURBS.
+  - [x] Two-sided Hausdorff and RMS distance (dense sampling both ways).
+  - [x] Boundary deviation: limit boundary vs the trim curve image on the surface.
+  - [x] Normal deviation (degrees), curvature deviation.
+  - [x] Seam metrics for two patches: positional gap and normal angle along the seam.
+- [x] CLI `nurbs2subd run <config.json>`: runs the pipeline, writes
       `results/<run-id>/{config.json, metrics.json, samples.csv, *.obj, meta.json}`;
       `meta.json` holds the git hash, timestamp, and timings.
-- [ ] `nurbs2subd sweep <config.json>` over parameter grids.
-- [ ] Python: common loader, table generator (Markdown + LaTeX), plot helpers.
-- [ ] Regression test: a small reference run whose metrics must stay within tolerance.
+- [x] `nurbs2subd sweep <config.json>` over parameter grids.
+- [x] Python: common loader, table generator (Markdown + LaTeX), plot helpers.
+- [x] Regression test: a small reference run whose metrics must stay within tolerance.
 
-Exit: one command regenerates every table and plot from configs.
+Exit: one command regenerates every table and plot from configs. **Met.**
 
 **GATE A.** All M0–M5 exit criteria met, CI green. Only then start Part B.
 
@@ -557,3 +557,87 @@ Exit: a draft ready to send to a co-author / reviewer.
 - 2026-09-19 - **M4 exit criterion partially met.** 121 tests pass on both
   presets and the viewer selftest passes. Reproducing the thesis figures
   specifically still needs the thesis data, exactly as R1 does.
+
+### M5 - Metrics and experiment harness
+
+- 2026-09-19 - `metrics/statistics`: max, mean and RMS, with failed
+  measurements counted separately and **excluded** rather than folded in.
+  Folding a failed projection in as zero flatters the result; folding it in as
+  something large invents data. A non-finite sample is treated as a failed
+  measurement for the same reason -- one NaN in the sums turns every statistic
+  into NaN and hides which sample was at fault. `max` is reported before `rms`
+  throughout: a fitting method is easy to make look good on RMS while leaving
+  one region badly wrong.
+- 2026-09-19 - `metrics/surface_error`: parametric, geometric, two-sided
+  Hausdorff and RMS, normal deviation and curvature deviation, plus boundary
+  deviation against the trim curve's *image on the surface*. The domain
+  correspondence is a `std::function` supplied by the caller; when none is
+  given, the correspondence-dependent statistics come back absent rather than
+  invented from a guessed mapping.
+- 2026-09-19 - `curvature_from_derivatives` was factored out of the NURBS
+  differential code so the limit surface's curvature is computed by *the same
+  formulas* as the NURBS it is compared against. Two implementations of the same
+  mathematics would make the curvature-deviation metric measure the difference
+  between two formulas rather than between two surfaces.
+- 2026-09-19 - Bug found by an exact oracle. The reverse (NURBS → limit)
+  distance first measured to the nearest tessellation *vertex*, which puts a
+  floor of half the sample spacing under every result: it read 0.0707 where the
+  true distance was 0, so the two-sided Hausdorff reported the tessellation
+  density rather than the coverage error. Fixed to measure against the faces.
+- 2026-09-19 - `metrics/seam_error`. **Two patches whose shared boundary control
+  points are identical join with a measured gap below 1e-14** -- zero, not
+  small. That is R3's central claim, and it is now measurable before R3 starts.
+  Recorded alongside it: the normal deviation across such a seam is *not* zero.
+  Shared control points give G0 and nothing more, and a zero gap is easy to
+  mistake for a smooth join.
+- 2026-09-19 - `fit::grid_layout`, the naive baseline layout, and
+  `experiment::run`/`sweep`. A run writes config.json, metrics.json,
+  samples.csv, three OBJs and meta.json with the git hash, the UTC timestamp and
+  per-stage timings. The provenance is asserted by a test rather than trusted.
+- 2026-09-19 - **Deviation: a new `core/experiment/` directory.** The run and
+  sweep harness is neither IO nor geometry, and filing it under `io/` would have
+  mislabelled it. CLAUDE.md's layout section and the README were updated to
+  match. `core/fit/` was created at the same time and *is* in the documented
+  layout.
+- 2026-09-19 - Bug the sweep tests now pin down: a sweep serialises its base
+  config, which already holds a resolved case path, then re-reads it. Resolving
+  against the base directory a second time produced a doubled-up path and the
+  sweep could not open its own case.
+- 2026-09-19 - **Finding worth carrying into R2 and R4.** A sweep over layout
+  density on the saddle case shows that an *anisotropic* layout can be worse
+  than a coarser isotropic one: 7x5 (35 control points) has a higher error than
+  5x5 (25). The mechanism is that a uniform cubic B-spline smooths a quadratic
+  by about `h^2/6 * f''`, so on `z = c(x^2 - y^2)` the errors from the two
+  directions **cancel when the spacings match** and stop cancelling when they do
+  not. Predicted `(c/3)|h_x^2 - h_y^2|` against measured RMS: 0.0081 vs 0.0081
+  at 9x7, 0.0231 vs 0.0197 at 7x5. R4's error-driven refinement must therefore
+  not refine one direction in isolation, and this is a concrete case where
+  "more control points" is not "less error".
+- 2026-09-19 - Python: `n2s_results.py` (loader, Markdown and LaTeX tables from
+  one set of formatted values so the two cannot disagree), `plot_sweep.py`,
+  `make_tables.py`. Tables carry their provenance underneath -- run id, git
+  describe, timestamp -- and say so explicitly when a run had unmeasured
+  samples.
+- 2026-09-19 - A regression run is pinned in `tests/metrics/test_runner.cpp`:
+  a small fixed config whose metrics must stay within a relative tolerance. It
+  deliberately turns the interior refinement off, that being the part of the
+  pipeline most sensitive to floating-point differences between platforms.
+- 2026-09-19 - **M5 exit criterion met.** 150 tests pass on both the `dev` and
+  `ci-nogfx` presets, and one command regenerates the tables and the figure from
+  a result directory.
+
+---
+
+## GATE A status
+
+M0-M5 are complete except for the parts that need the MSc thesis data, which
+are the same parts R1 is blocked on:
+
+- M1: the legacy `.bsc` reader was dropped by agreement; the thesis surfaces
+  will be converted once to JSON when the files are to hand.
+- M2: the two thesis domains are not among the synthetic cases.
+- M4: the thesis figures cannot be reproduced without the thesis cases.
+
+Everything that does not depend on that data is done and tested. **Before Part B
+starts, the user has to supply the two thesis test cases**; without them R1
+cannot reproduce or correct the baseline it exists to correct.

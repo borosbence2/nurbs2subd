@@ -1,0 +1,31 @@
+{
+  "name": "baseline_saddle",
+  "case": "../../data/saddle_square_with_circular_hole_r0.25.json",
+
+  "_comment": "Baseline with no fitting: the layout is a grid sampled off the NURBS, so the error below is dominated by Catmull-Clark shrinkage. R1 replaces the layout with a fitted one and these numbers are what it has to beat.",
+
+  "layout_rows": 7,
+  "layout_columns": 7,
+
+  "sampling": {
+    "mode": "adaptive",
+    "max_segment_length": 0.08,
+    "max_sagitta": 0.008
+  },
+  "refinement": {
+    "max_triangle_area": 0.02,
+    "min_angle_degrees": 25.0,
+    "max_vertices": 4000
+  },
+  "error": {
+    "samples_per_face": 4,
+    "nurbs_samples_per_side": 24,
+    "restrict_to_trimmed_region": true
+  },
+  "boundary": {
+    "samples_per_edge": 24,
+    "trim_samples_per_curve": 128
+  },
+  "export_level": 2,
+  "write_samples": true
+}

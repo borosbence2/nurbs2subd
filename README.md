@@ -61,9 +61,20 @@ therefore runs the sanitized Debug build on Linux.
 
 ```sh
 ./build/release/bin/nurbs2subd --version
-./build/release/bin/nurbs2subd run experiments/configs/<name>.json
-./build/release/bin/nurbs2subd_viewer
-python experiments/scripts/plot_<name>.py results/<run-id>
+
+# Regenerate the synthetic cases in data/ (they are generated, not hand-made).
+./build/release/bin/nurbs2subd export-cases data
+
+# One experiment, or a grid of them.
+./build/release/bin/nurbs2subd run experiments/configs/baseline_saddle.json
+./build/release/bin/nurbs2subd sweep experiments/configs/sweep_layout_density.json
+
+# Tables and figures, from a result directory.
+python experiments/scripts/make_tables.py results/<run-id>
+python experiments/scripts/plot_sweep.py results/<sweep-id>
+
+# The viewer, optionally opening a case.
+./build/release/bin/nurbs2subd_viewer data/saddle_square_with_circular_hole_r0.25.json
 ```
 
 Experiment output goes to `results/<run-id>/`, which is gitignored. Each run
@@ -74,7 +85,7 @@ can be traced back to the source state that produced it.
 
 ```
 core/         geometry library, no UI dependencies
-              nurbs/ trim/ subd/ fit/ metrics/ io/
+              nurbs/ trim/ subd/ fit/ metrics/ io/ experiment/
 apps/cli/     nurbs2subd — headless experiment runner
 apps/viewer/  Polyscope + ImGui viewer
 tests/        Catch2 v3 tests, mirroring core/

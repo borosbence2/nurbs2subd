@@ -32,7 +32,8 @@ before starting any task.
 
 ## Layout
 ```
-core/        geometry library (no UI deps): nurbs/, trim/, subd/, fit/, metrics/, io/
+core/        geometry library (no UI deps): nurbs/, trim/, subd/, fit/, metrics/,
+             io/, experiment/ (the run + sweep harness)
 apps/viewer/ Polyscope app
 apps/cli/    headless experiment runner (nurbs2subd)
 tests/       Catch2 tests, mirror core/ structure
@@ -60,6 +61,6 @@ docs/        plan, notes, paper draft
 ```
 cmake --preset dev && cmake --build --preset dev
 ctest --preset dev --output-on-failure
-./build/dev/apps/cli/nurbs2subd run experiments/configs/<name>.json
+./build/dev/bin/nurbs2subd run experiments/configs/<name>.json
 python experiments/scripts/plot_<name>.py results/<run-id>
 ```

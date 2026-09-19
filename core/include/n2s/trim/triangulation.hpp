@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstddef>
+#include <filesystem>
 #include <vector>
 
 namespace n2s {
@@ -40,6 +41,9 @@ struct SurfaceMesh {
     /// true area of the trimmed surface as the triangulation is refined, always
     /// from below for a convex patch.
     double area() const;
+
+    /// Writes a Wavefront OBJ with triangular faces.
+    void write_obj(const std::filesystem::path& path) const;
 };
 
 /// Constrained Delaunay triangulation of `region`, with the trim loops as

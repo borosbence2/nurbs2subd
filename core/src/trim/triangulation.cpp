@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <fstream>
 #include <numbers>
 #include <optional>
 #include <stdexcept>
@@ -135,6 +136,22 @@ DomainMesh triangulate_with(const TrimRegion& region,
 }
 
 } // namespace
+
+void SurfaceMesh::write_obj(const std::filesystem::path& path) const {
+    std::ofstream stream(path);
+    if (!stream) {
+        throw std::runtime_error(fmt::format("cannot open {} for writing", path.string()));
+    }
+
+    stream << "# nurbs2subd trimmed surface\n";
+    for (const Eigen::Vector3d& v : vertices) {
+        stream << fmt::format("v {:.17g} {:.17g} {:.17g}\n", v.x(), v.y(), v.z());
+    }
+    for (const std::array<std::size_t, 3>& t : triangles) {
+        // OBJ indices are 1-based.
+        stream << fmt::format("f {} {} {}\n", t[0] + 1, t[1] + 1, t[2] + 1);
+    }
+}
 
 DomainMesh triangulate(const TrimRegion& region,
                        const NurbsSurface& surface,
