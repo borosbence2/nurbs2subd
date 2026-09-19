@@ -18,6 +18,8 @@ add_library(n2s_core STATIC
     include/n2s/nurbs/knot_vector.hpp
     include/n2s/nurbs/projection.hpp
     include/n2s/nurbs/surface.hpp
+    include/n2s/subd/control_mesh.hpp
+    include/n2s/subd/subdivision.hpp
     include/n2s/tolerances.hpp
     include/n2s/trim/cases.hpp
     include/n2s/trim/sampling.hpp
@@ -31,6 +33,8 @@ add_library(n2s_core STATIC
     src/nurbs/knot_vector.cpp
     src/nurbs/projection.cpp
     src/nurbs/surface.cpp
+    src/subd/control_mesh.cpp
+    src/subd/subdivision.cpp
     src/trim/cases.cpp
     src/trim/sampling.cpp
     src/trim/trim_loop.cpp

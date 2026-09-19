@@ -94,31 +94,32 @@ domains: blocked on the thesis data, as for R1.
 
 ### M3 — Subdivision core (OpenSubdiv wrapper)
 Tasks:
-- [ ] `ControlMesh` (vertices, quad faces, boundary tags, crease/corner tags).
-- [ ] Wrapper: `ControlMesh` → `Far::TopologyRefiner` (SCHEME_CATMARK, boundary
+- [x] `ControlMesh` (vertices, quad faces, boundary tags, crease/corner tags).
+- [x] Wrapper: `ControlMesh` → `Far::TopologyRefiner` (SCHEME_CATMARK, boundary
       interpolation EDGE_AND_CORNER, configurable).
-- [ ] Limit evaluation at `(face, u, v)` returning position, first derivatives, normal,
-      and second derivatives where available (`Far::PatchTable` + `PatchMap`).
-- [ ] **Limit stencil export as a sparse matrix**: for a set of `(face,u,v)` sample
+- [x] Limit evaluation at `(face, u, v)` returning position, first derivatives, normal,
+      and second derivatives where available. **Via the limit stencil matrices
+      rather than `PatchTable` + `PatchMap`; see Progress.**
+- [x] **Limit stencil export as a sparse matrix**: for a set of `(face,u,v)` sample
       locations, build the matrix `A` such that `limit_points = A * control_points`.
       This is the backbone of all fitting.
-- [ ] Uniform refinement to level k for display.
-- [ ] Export OBJ (control mesh and refined mesh).
+- [x] Uniform refinement to level k for display.
+- [x] Export OBJ (control mesh and refined mesh).
 
 Tests (oracles; these are the only allowed hand-written formulas):
-- Regular vertex limit weights: centre 4/9, edge neighbours 1/9, diagonal 1/36.
-- Valence-n interior vertex limit position: centre n/(n+5), each edge-connected
-  1-ring vertex 4/(n(n+5)), each face-diagonal vertex 1/(n(n+5)). Check n = 3, 5, 6
-  against OpenSubdiv's limit stencils.
-- Eigenvalues of the regular (valence-4) local subdivision matrix:
-  {1, 1/2, 1/2, 1/4, 1/4, 1/4, 1/8, 1/8, 1/16}.
-- A regular grid of control points taken from a uniform bicubic B-spline
-  reproduces that B-spline surface exactly (< 1e-12).
-- Boundary limit curve with EDGE_AND_CORNER equals the cubic B-spline of the
-  boundary control points (the property watertightness relies on).
-- Rows of `A` sum to 1.
+- [x] Regular vertex limit weights: centre 4/9, edge neighbours 1/9, diagonal 1/36.
+- [x] Valence-n interior vertex limit position: centre n/(n+5), each edge-connected
+      1-ring vertex 4/(n(n+5)), each face-diagonal vertex 1/(n(n+5)). Checked for
+      n = 3, 4, 5, 6 against OpenSubdiv's limit stencils.
+- [x] Eigenvalues of the regular (valence-4) local subdivision matrix:
+      {1, 1/2, 1/2, 1/4, 1/4, 1/4, 1/8, 1/8, 1/16}.
+- [x] A regular grid of control points taken from a uniform bicubic B-spline
+      reproduces that B-spline surface exactly (< 1e-12).
+- [x] Boundary limit curve with EDGE_AND_CORNER equals the cubic B-spline of the
+      boundary control points (the property watertightness relies on).
+- [x] Rows of `A` sum to 1.
 
-Exit: all oracle tests pass for valences 3–6.
+Exit: all oracle tests pass for valences 3-6. **Met.**
 
 ### M4 — Viewer
 Tasks:
@@ -442,3 +443,63 @@ Exit: a draft ready to send to a co-author / reviewer.
   area converges to the analytic `1 - pi r^2`. 90 tests pass on both the `dev`
   and `ci-nogfx` presets. The two thesis domains remain blocked on the thesis
   data, exactly as R1 is.
+- 2026-09-19 - M2 CI fully green on all six jobs, windows-msvc included: the
+  C4702 fix held.
+
+### M3 - Subdivision core (OpenSubdiv wrapper)
+
+- 2026-09-19 - `ControlMesh`: quad faces, crease and corner tags, OBJ export,
+  and named constructors `grid`, `cube` and `vertex_fan(valence)`. Quads only,
+  deliberately: for an all-quad mesh each face is exactly one ptex face, so the
+  face index the limit locations use *is* the ptex index, rather than a mapping
+  that has to be maintained and can silently drift. The constructor verifies the
+  correspondence against `Far::PtexIndices` rather than assuming it.
+- 2026-09-19 - `SubdivisionSurface`: topology descriptor to
+  `Far::TopologyRefiner` (SCHEME_CATMARK, configurable boundary interpolation,
+  default EDGE_AND_CORNER), adaptive refinement, limit stencil matrices, limit
+  evaluation, uniform refinement, OBJ export.
+- 2026-09-19 - **Double precision preserved.** Every `Far::...Table` convenience
+  typedef in OpenSubdiv is `float`. The underlying `...Real<REAL>` templates are
+  explicitly instantiated for `double` as well, so
+  `LimitStencilTableFactoryReal<double>` is used directly and the "double
+  everywhere in geometry code" rule holds through the subdivision layer. Worth
+  knowing: using the obvious `Far::LimitStencilTableFactory` would have quietly
+  capped every limit position, derivative and fitting matrix at single
+  precision, and the resulting ~1e-7 error floor would have been indistinguishable
+  from a genuine approximation error in M5.
+- 2026-09-19 - **Deviation: limit evaluation goes through the limit stencil
+  matrices, not `PatchTable` + `PatchMap`.** The plan named the latter. Both are
+  correct, but routing evaluation through the same matrices the fitting uses
+  means the two cannot disagree -- and a disagreement between the evaluator and
+  the fitting matrix would not show up as a crash, only as an unexplained
+  residual somewhere in R1 or R2.
+- 2026-09-19 - Added `local_subdivision_matrix(vertex)`, the map from a vertex
+  and its 1-ring to the same after one Catmull-Clark step. Needed for the
+  eigenvalue oracle, and R5 needs it again to study behaviour at extraordinary
+  vertices. Built by refining the identity through `PrimvarRefinerReal<double>`,
+  so it comes from OpenSubdiv's stencils rather than from any formula written
+  here.
+- 2026-09-19 - **Every oracle passed on the first run.** In particular the
+  valence-3, 5 and 6 limit masks agree with `n/(n+5)`, `4/(n(n+5))`,
+  `1/(n(n+5))` to 1e-12, the regular spectrum is exactly
+  {1, 1/2, 1/2, 1/4, 1/4, 1/4, 1/8, 1/8, 1/16}, and a regular grid reproduces
+  the uniform bicubic B-spline to better than 1e-12. Defect 1 of the thesis --
+  hand-derived extraordinary-vertex limit weights that were wrong -- is now
+  covered by a test that would catch it.
+- 2026-09-19 - The watertightness precondition is asserted directly rather than
+  inferred: for locations on a boundary, every stencil weight on a non-boundary
+  control point is zero to 1e-14. That is the property R3 depends on, stated as
+  a fact about the matrix rather than as a measured gap that happened to be
+  small.
+- 2026-09-19 - Build gotcha: OpenSubdiv's `Sdc` scheme headers use `M_PI`, which
+  is not standard C++ and is absent under the strict conformance this project
+  builds with. Fixed by putting `_USE_MATH_DEFINES` and `_DEFAULT_SOURCE` on the
+  dependency's interface target, covering MSVC, MinGW and glibc.
+- 2026-09-19 - Behaviour worth knowing: OpenSubdiv *silently drops* limit
+  locations that have no limit surface beneath them rather than failing. With
+  `BoundaryInterpolation::None` that is the entire boundary region. The wrapper
+  compares the stencil count against the request and raises an error naming the
+  cause; there is a test pinning the behaviour down, because a silently short
+  result would otherwise misalign every downstream sample array.
+- 2026-09-19 - **M3 exit criterion met.** 108 tests pass on both the `dev` and
+  `ci-nogfx` presets.

@@ -10,6 +10,7 @@ add_executable(n2s_tests
     nurbs/test_knot_vector.cpp
     nurbs/test_projection.cpp
     nurbs/test_surface.cpp
+    subd/test_subdivision.cpp
     trim/test_sampling.cpp
     trim/test_trim_loop.cpp
     trim/test_triangulation.cpp

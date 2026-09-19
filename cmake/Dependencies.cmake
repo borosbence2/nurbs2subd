@@ -99,6 +99,15 @@ message(STATUS "OpenSubdiv CPU target: ${N2S_OSD_TARGET}")
 add_library(n2s_opensubdiv INTERFACE)
 target_link_libraries(n2s_opensubdiv INTERFACE ${N2S_OSD_TARGET})
 target_include_directories(n2s_opensubdiv SYSTEM INTERFACE "${opensubdiv_SOURCE_DIR}")
+
+# OpenSubdiv's Sdc scheme headers use M_PI, which is not standard C++ and is
+# therefore absent under the strict conformance this project builds with
+# (-std=c++20 rather than -std=gnu++20, and /permissive- on MSVC). These two
+# macros are how the respective C libraries are asked to define it anyway:
+# _USE_MATH_DEFINES for the Microsoft and MinGW headers, _DEFAULT_SOURCE for
+# glibc, whose own definition is suppressed by __STRICT_ANSI__. Each is
+# harmless where it is not needed.
+target_compile_definitions(n2s_opensubdiv INTERFACE _USE_MATH_DEFINES _DEFAULT_SOURCE)
 add_library(n2s::opensubdiv ALIAS n2s_opensubdiv)
 
 # --------------------------------------------------------------------------
