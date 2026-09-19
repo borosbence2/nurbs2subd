@@ -1,0 +1,47 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+EmptyLineBeforeAccessModifier: LogicalBlock
+FixNamespaceComments: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Own headers first.
+  - Regex: '^"n2s/'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+  # Third-party.
+  - Regex: '^<(Eigen|opensubdiv|CDT|nlohmann|fmt|CLI|catch2|polyscope|imgui)'
+    Priority: 3
+  # Standard library.
+  - Regex: '^<[a-z_]+>$'
+    Priority: 5
+  - Regex: '.*'
+    Priority: 4
+IndentCaseLabels: false
+IndentPPDirectives: AfterHash
+NamespaceIndentation: None
+PackConstructorInitializers: Never
+PointerAlignment: Left
+QualifierAlignment: Left
+ReferenceAlignment: Left
+SeparateDefinitionBlocks: Always
+SortIncludes: CaseSensitive
+SpaceAfterTemplateKeyword: false

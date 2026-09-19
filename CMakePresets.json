@@ -1,0 +1,85 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "dev",
+      "inherits": "base",
+      "displayName": "dev - Debug with ASan + UBSan",
+      "description": "Day-to-day build. Sanitizers are active on Linux/macOS and skipped elsewhere.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "N2S_ENABLE_SANITIZERS": "ON",
+        "N2S_WARNINGS_AS_ERRORS": "ON",
+        "N2S_BUILD_VIEWER": "ON",
+        "N2S_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "displayName": "release - optimised, no sanitizers",
+      "description": "Build used to run experiments; timings in meta.json only mean anything here.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "N2S_ENABLE_SANITIZERS": "OFF",
+        "N2S_WARNINGS_AS_ERRORS": "ON",
+        "N2S_BUILD_VIEWER": "ON",
+        "N2S_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "ci",
+      "inherits": "base",
+      "displayName": "ci - RelWithDebInfo, warnings are errors",
+      "description": "Configuration used by GitHub Actions on Linux and Windows.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "N2S_ENABLE_SANITIZERS": "OFF",
+        "N2S_WARNINGS_AS_ERRORS": "ON",
+        "N2S_BUILD_VIEWER": "ON",
+        "N2S_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "ci-nogfx",
+      "inherits": "ci",
+      "displayName": "ci-nogfx - core and cli only",
+      "description": "Guards the hard rule that core/ builds and tests without any graphics library.",
+      "cacheVariables": {
+        "N2S_BUILD_VIEWER": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "ci", "configurePreset": "ci" },
+    { "name": "ci-nogfx", "configurePreset": "ci-nogfx" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    { "name": "dev", "inherits": "base", "configurePreset": "dev" },
+    { "name": "release", "inherits": "base", "configurePreset": "release" },
+    { "name": "ci", "inherits": "base", "configurePreset": "ci" },
+    { "name": "ci-nogfx", "inherits": "base", "configurePreset": "ci-nogfx" }
+  ]
+}

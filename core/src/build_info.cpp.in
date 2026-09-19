@@ -1,0 +1,27 @@
+// Generated from core/src/build_info.cpp.in by CMake. Do not edit the copy in
+// the build directory; edit the template.
+
+#include "n2s/build_info.hpp"
+
+namespace n2s {
+
+const BuildInfo& build_info() {
+    static const BuildInfo info{
+        .version = "@PROJECT_VERSION@",
+        .git_sha = "@N2S_GIT_SHA@",
+        .git_describe = "@N2S_GIT_DESCRIBE@",
+        .git_dirty = "@N2S_GIT_DIRTY@",
+        .build_type = "@CMAKE_BUILD_TYPE@",
+        .compiler = "@CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@",
+        .sanitizers = "@N2S_SANITIZERS_ACTIVE@",
+    };
+    return info;
+}
+
+std::string_view build_info_string() {
+    return "nurbs2subd @PROJECT_VERSION@ (@N2S_GIT_DESCRIBE@, @N2S_GIT_DIRTY@) "
+           "@CMAKE_BUILD_TYPE@ @CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@ "
+           "sanitizers=@N2S_SANITIZERS_ACTIVE@";
+}
+
+}  // namespace n2s

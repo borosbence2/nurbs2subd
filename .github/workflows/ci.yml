@@ -1,0 +1,119 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-latest
+            preset: ci
+            cc: gcc
+            cxx: g++
+            graphics: true
+          - name: linux-clang
+            os: ubuntu-latest
+            preset: ci
+            cc: clang
+            cxx: clang++
+            graphics: true
+          - name: windows-msvc
+            os: windows-latest
+            preset: ci
+            cc: cl
+            cxx: cl
+            graphics: true
+          # Guards the hard rule that core/ builds and tests with no graphics
+          # library present. No X11/GL development packages are installed here,
+          # so a stray dependency on the viewer stack fails the job.
+          - name: linux-core-nogfx
+            os: ubuntu-latest
+            preset: ci-nogfx
+            cc: gcc
+            cxx: g++
+            graphics: false
+          # The research plan requires Debug builds to run under ASan + UBSan.
+          - name: linux-asan
+            os: ubuntu-latest
+            preset: dev
+            cc: clang
+            cxx: clang++
+            graphics: true
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # GitVersion.cmake wants a real commit, not a grafted shallow HEAD.
+          fetch-depth: 0
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Install graphics development packages
+        if: runner.os == 'Linux' && matrix.graphics
+        run: sudo apt-get install -y xorg-dev libglu1-mesa-dev
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y --no-progress
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache dependency tree
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          # Anything that changes a pin, a dependency option, the compiler or
+          # the build type invalidates the cache outright; there is no
+          # restore-keys fallback, because a partially matching dependency tree
+          # is harder to debug than a cold build.
+          key: deps-${{ matrix.name }}-${{ hashFiles('cmake/Dependencies.cmake', 'CMakePresets.json') }}
+
+      # FETCHCONTENT_BASE_DIR is a cache variable, not an environment
+      # variable, so it has to be passed on the command line. Keeping the
+      # dependency tree outside the build directory lets it be cached
+      # independently of the compiled project.
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }} -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Smoke-test the CLI
+        run: ./build/${{ matrix.preset }}/bin/nurbs2subd --version
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check formatting
+        run: |
+          find core apps tests -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cpp.in' \) \
+            -print0 | xargs -0 clang-format --dry-run --Werror --style=file

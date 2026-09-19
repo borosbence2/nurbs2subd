@@ -1,0 +1,32 @@
+# Build trees
+/build/
+/out/
+cmake-build-*/
+
+# CMake / FetchContent
+CMakeUserPresets.json
+/_deps/
+
+# Experiment output (regenerated from configs; never committed)
+/results/
+/experiments/results/
+
+# Editors / IDEs
+.vscode/
+.vs/
+.idea/
+*.user
+
+# OS
+Thumbs.db
+ehthumbs.db
+.DS_Store
+
+# Python analysis scripts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Stray archives / scratch
+*.zip

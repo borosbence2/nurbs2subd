@@ -1,0 +1,8 @@
+# Keep line endings LF in the repository on every platform. The tree is built on
+# Linux and Windows alike and .editorconfig already asks editors for LF.
+* text=auto eol=lf
+
+# Binary test data must never be munged. Note that .obj here is Wavefront OBJ,
+# which is text, so it is deliberately not listed.
+*.bsc binary
+*.png binary
