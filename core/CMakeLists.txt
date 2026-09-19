@@ -9,6 +9,7 @@ configure_file(
 
 add_library(n2s_core STATIC
     include/n2s/build_info.hpp
+    include/n2s/io/case_json.hpp
     include/n2s/io/nurbs_json.hpp
     include/n2s/nurbs/basis.hpp
     include/n2s/nurbs/curve.hpp
@@ -26,6 +27,7 @@ add_library(n2s_core STATIC
     include/n2s/trim/trim_loop.hpp
     include/n2s/trim/triangulation.hpp
     include/n2s/trim/validate.hpp
+    src/io/case_json.cpp
     src/io/nurbs_json.cpp
     src/nurbs/basis.cpp
     src/nurbs/differential.cpp

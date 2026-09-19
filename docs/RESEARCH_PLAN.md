@@ -123,19 +123,24 @@ Exit: all oracle tests pass for valences 3-6. **Met.**
 
 ### M4 — Viewer
 Tasks:
-- [ ] Polyscope app with an ImGui panel: load a case (JSON), run pipeline stages
+- [x] Polyscope app with an ImGui panel: load a case (JSON), run pipeline stages
       individually, toggle layers.
-- [ ] Layers: NURBS surface, control net, trim curves (3D and domain view), domain
+- [x] Layers: NURBS surface, control net, trim curves (3D and domain view), domain
       triangulation, quad layout, Catmull–Clark control mesh, limit surface.
-- [ ] Scalar maps: error-to-NURBS, mean curvature, Gaussian curvature. Fixed,
+      (The quad layout *is* the Catmull–Clark control mesh in this pipeline, so
+      they are one layer, not two.)
+- [x] Scalar maps: error-to-NURBS, mean curvature, Gaussian curvature. Fixed,
       user-editable range, colorbar always shown.
-- [ ] Isophote / reflection-line stripes (static light direction, stripe colormap)
+- [x] Isophote / reflection-line stripes (static light direction, stripe colormap)
       as a view-independent zebra substitute.
-- [ ] EV markers colored by valence.
-- [ ] Side-by-side domain (2D) and surface (3D) views.
-- [ ] Screenshot export with a fixed camera stored in the case file.
+- [x] EV markers colored by valence.
+- [x] Side-by-side domain (2D) and surface (3D) views. **Deviation:** one 3D
+      scene with the domain placed beside the model, not two windows; see Progress.
+- [x] Screenshot export with a fixed camera stored in the case file.
 
 Exit: every figure from the thesis can be reproduced with correct color scales.
+**Partially blocked**: the machinery is in place and colour scales are enforced,
+but the thesis figures themselves need the thesis data, as R1 does.
 
 ### M5 — Metrics and experiment harness
 Tasks:
@@ -503,3 +508,52 @@ Exit: a draft ready to send to a co-author / reviewer.
   result would otherwise misalign every downstream sample array.
 - 2026-09-19 - **M3 exit criterion met.** 108 tests pass on both the `dev` and
   `ci-nogfx` presets.
+
+### M4 - Viewer
+
+- 2026-09-19 - **Case file format** (`n2s-case`), which M4 needed and M5 needs
+  again: surface, trim region, optional control mesh, optional camera, and
+  colour ranges. The camera lives in the file because a screenshot whose
+  viewpoint exists only in whoever took it is not reproducible, and the plan
+  requires every figure to be regenerable from committed inputs.
+- 2026-09-19 - Curve JSON now covers domain curves as well as model curves,
+  under a separate `n2s-curve2` tag rather than a dimension field. A trim curve
+  handed to a reader expecting model geometry then fails immediately instead of
+  producing a curve in the wrong space. There is a test for both directions.
+- 2026-09-19 - `nurbs2subd export-cases` writes all 12 synthetic cases to
+  `data/` (76 KB total, well under the 1 MB rule), so `data/` is generated from
+  the same code the tests use rather than hand-maintained. A test loads every
+  committed file, validates, triangulates and checks the size cap, which is what
+  catches a change to the case definitions invalidating what is on disk.
+- 2026-09-19 - Polyscope viewer with every layer the plan lists, an ImGui panel
+  for the pipeline parameters, editable colour ranges, isophote stripes about a
+  fixed light direction, and EV markers coloured by valence on a fixed 3-to-8
+  scale so the colours mean the same thing from case to case.
+- 2026-09-19 - **The no-auto-ranging rule is enforced, not just documented.**
+  Defect 6 of the thesis was curvature plots with no fixed colour scale. A
+  scalar with no range in the case file is still drawn -- exploring is useful --
+  but it is labelled `AUTO - not comparable`, and **the screenshot button is
+  disabled while any such field exists**. Exporting a figure is the moment the
+  rule has to bite, so that is where it bites. Editing a range in the panel
+  counts as pinning it, because the user chose the numbers.
+- 2026-09-19 - **Deviation: side-by-side views.** Polyscope draws a single 3D
+  scene, so the domain triangulation and the domain-space trim curves are placed
+  beside the model rather than shown in a second window. Same information,
+  one viewport; a second window would have meant a second renderer.
+- 2026-09-19 - **Deviation: error-to-NURBS is computed on demand**, behind a
+  button, because it costs a closest-point projection per limit sample and the
+  viewer should come up promptly. Unconverged projections are counted and
+  reported in the panel rather than folded silently into the map, since an
+  unconverged projection gives an upper bound at best and a quietly optimistic
+  error picture is worse than none.
+- 2026-09-19 - Verification note: **the drawing itself cannot be checked
+  automatically.** The geometry behind it can, so the viewer is split in two --
+  `scene.cpp` knows nothing about Polyscope, and `nurbs2subd_viewer --selftest`
+  builds a whole scene headlessly, asserts every layer came back non-empty and
+  that no scalar was auto-ranged, then exits. CI runs it. Whether the picture
+  *looks* right still needs a human, and nothing here claims otherwise.
+- 2026-09-19 - CI gained three smoke steps: the case exporter, the viewer
+  selftest, and the existing CLI version check.
+- 2026-09-19 - **M4 exit criterion partially met.** 121 tests pass on both
+  presets and the viewer selftest passes. Reproducing the thesis figures
+  specifically still needs the thesis data, exactly as R1 does.

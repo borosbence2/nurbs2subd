@@ -526,6 +526,54 @@ PolyMesh SubdivisionSurface::refine_uniform(int level) const {
     return mesh;
 }
 
+TessellatedLimit tessellate_limit(const SubdivisionSurface& surface, int samples_per_edge) {
+    if (samples_per_edge < 1) {
+        throw std::invalid_argument(
+            fmt::format("samples_per_edge must be at least 1, got {}", samples_per_edge));
+    }
+
+    const std::size_t faces = surface.control_mesh().num_quads();
+    const int side = samples_per_edge + 1;
+    const auto per_face = static_cast<std::size_t>(side * side);
+
+    TessellatedLimit result;
+    result.locations.reserve(faces * per_face);
+
+    for (std::size_t f = 0; f < faces; ++f) {
+        for (int a = 0; a < side; ++a) {
+            for (int b = 0; b < side; ++b) {
+                result.locations.push_back(
+                    LimitLocation{static_cast<int>(f),
+                                  static_cast<double>(a) / static_cast<double>(samples_per_edge),
+                                  static_cast<double>(b) / static_cast<double>(samples_per_edge)});
+            }
+        }
+    }
+
+    const std::vector<LimitSample> samples = surface.evaluate_limit(result.locations);
+
+    result.mesh.vertices.reserve(samples.size());
+    result.normals.reserve(samples.size());
+    for (const LimitSample& sample : samples) {
+        result.mesh.vertices.push_back(sample.position);
+        result.normals.push_back(sample.normal);
+    }
+
+    result.mesh.quads.reserve(faces *
+                              static_cast<std::size_t>(samples_per_edge * samples_per_edge));
+    for (std::size_t f = 0; f < faces; ++f) {
+        const auto base = static_cast<int>(f * per_face);
+        for (int a = 0; a < samples_per_edge; ++a) {
+            for (int b = 0; b < samples_per_edge; ++b) {
+                const int corner = base + a * side + b;
+                result.mesh.quads.push_back({corner, corner + side, corner + side + 1, corner + 1});
+            }
+        }
+    }
+
+    return result;
+}
+
 Eigen::MatrixXd control_point_matrix(const ControlMesh& mesh) {
     Eigen::MatrixXd rows(static_cast<Eigen::Index>(mesh.num_vertices()), 3);
     for (std::size_t i = 0; i < mesh.num_vertices(); ++i) {

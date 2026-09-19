@@ -47,21 +47,27 @@ std::vector<double> read_doubles(const nlohmann::json& document, const char* nam
     return value.get<std::vector<double>>();
 }
 
-std::vector<Eigen::Vector3d> read_points(const nlohmann::json& document, const char* name) {
+template<int Dim>
+std::vector<Eigen::Matrix<double, Dim, 1>> read_points(const nlohmann::json& document,
+                                                       const char* name) {
     const nlohmann::json& value = require_field(document, name);
     if (!value.is_array()) {
         throw std::runtime_error(fmt::format("field \"{}\" must be an array", name));
     }
 
-    std::vector<Eigen::Vector3d> points;
+    std::vector<Eigen::Matrix<double, Dim, 1>> points;
     points.reserve(value.size());
     for (std::size_t i = 0; i < value.size(); ++i) {
         const nlohmann::json& entry = value[i];
-        if (!entry.is_array() || entry.size() != 3) {
+        if (!entry.is_array() || entry.size() != Dim) {
             throw std::runtime_error(fmt::format(
-                "\"{}\"[{}] must be an array of three numbers, got {}", name, i, entry.dump()));
+                "\"{}\"[{}] must be an array of {} numbers, got {}", name, i, Dim, entry.dump()));
         }
-        points.emplace_back(entry[0].get<double>(), entry[1].get<double>(), entry[2].get<double>());
+        Eigen::Matrix<double, Dim, 1> point;
+        for (int k = 0; k < Dim; ++k) {
+            point[k] = entry[static_cast<std::size_t>(k)].get<double>();
+        }
+        points.push_back(point);
     }
     return points;
 }
@@ -94,10 +100,15 @@ int read_degree(const nlohmann::json& document, const char* name) {
     return value.get<int>();
 }
 
-nlohmann::json points_to_json(const std::vector<Eigen::Vector3d>& points) {
+template<int Dim>
+nlohmann::json points_to_json(const std::vector<Eigen::Matrix<double, Dim, 1>>& points) {
     nlohmann::json array = nlohmann::json::array();
-    for (const Eigen::Vector3d& p : points) {
-        array.push_back({p.x(), p.y(), p.z()});
+    for (const Eigen::Matrix<double, Dim, 1>& p : points) {
+        nlohmann::json entry = nlohmann::json::array();
+        for (int k = 0; k < Dim; ++k) {
+            entry.push_back(p[k]);
+        }
+        array.push_back(std::move(entry));
     }
     return array;
 }
@@ -125,15 +136,47 @@ void write_document(const std::filesystem::path& path, const nlohmann::json& doc
 
 } // namespace
 
-nlohmann::json to_json(const NurbsCurve& curve) {
+namespace {
+
+template<int Dim>
+const char* curve_tag() {
+    return Dim == 2 ? "n2s-curve2" : "n2s-curve";
+}
+
+template<int Dim>
+nlohmann::json curve_to_json(const NurbsCurveT<Dim>& curve) {
     return nlohmann::json{
-        {"format", "n2s-curve"},
+        {"format", curve_tag<Dim>()},
         {"version", kNurbsJsonVersion},
         {"degree", curve.degree()},
         {"knots", curve.knots().knots()},
-        {"control_points", points_to_json(curve.control_points())},
+        {"control_points", points_to_json<Dim>(curve.control_points())},
         {"weights", curve.weights()},
     };
+}
+
+template<int Dim>
+NurbsCurveT<Dim> curve_from_document(const nlohmann::json& document) {
+    require_format(document, curve_tag<Dim>());
+
+    const int degree = read_degree(document, "degree");
+    std::vector<double> knots = read_doubles(document, "knots");
+    std::vector<Eigen::Matrix<double, Dim, 1>> points =
+        read_points<Dim>(document, "control_points");
+    std::vector<double> weights = read_weights(document, points.size());
+
+    return NurbsCurveT<Dim>{
+        KnotVector{degree, std::move(knots)}, std::move(points), std::move(weights)};
+}
+
+} // namespace
+
+nlohmann::json to_json(const NurbsCurve& curve) {
+    return curve_to_json<3>(curve);
+}
+
+nlohmann::json to_json(const NurbsCurve2& curve) {
+    return curve_to_json<2>(curve);
 }
 
 nlohmann::json to_json(const NurbsSurface& surface) {
@@ -146,20 +189,17 @@ nlohmann::json to_json(const NurbsSurface& surface) {
         {"knots_v", surface.knots_v().knots()},
         {"num_u", surface.num_u()},
         {"num_v", surface.num_v()},
-        {"control_points", points_to_json(surface.control_points())},
+        {"control_points", points_to_json<3>(surface.control_points())},
         {"weights", surface.weights()},
     };
 }
 
 NurbsCurve curve_from_json(const nlohmann::json& document) {
-    require_format(document, "n2s-curve");
+    return curve_from_document<3>(document);
+}
 
-    const int degree = read_degree(document, "degree");
-    std::vector<double> knots = read_doubles(document, "knots");
-    std::vector<Eigen::Vector3d> points = read_points(document, "control_points");
-    std::vector<double> weights = read_weights(document, points.size());
-
-    return NurbsCurve{KnotVector{degree, std::move(knots)}, std::move(points), std::move(weights)};
+NurbsCurve2 curve2_from_json(const nlohmann::json& document) {
+    return curve_from_document<2>(document);
 }
 
 NurbsSurface surface_from_json(const nlohmann::json& document) {
@@ -169,7 +209,7 @@ NurbsSurface surface_from_json(const nlohmann::json& document) {
     const int degree_v = read_degree(document, "degree_v");
     std::vector<double> knots_u = read_doubles(document, "knots_u");
     std::vector<double> knots_v = read_doubles(document, "knots_v");
-    std::vector<Eigen::Vector3d> points = read_points(document, "control_points");
+    std::vector<Eigen::Vector3d> points = read_points<3>(document, "control_points");
     std::vector<double> weights = read_weights(document, points.size());
 
     KnotVector kv_u{degree_u, std::move(knots_u)};

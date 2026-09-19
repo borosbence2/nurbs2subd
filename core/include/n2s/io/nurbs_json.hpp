@@ -47,12 +47,20 @@ namespace n2s::io {
 inline constexpr int kNurbsJsonVersion = 1;
 
 nlohmann::json to_json(const NurbsCurve& curve);
+
+/// Domain curves carry the tag "n2s-curve2" and two-component control points.
+/// A separate tag rather than a dimension field, so that handing a trim curve
+/// to a reader expecting model geometry fails immediately instead of producing
+/// a curve in the wrong space.
+nlohmann::json to_json(const NurbsCurve2& curve);
+
 nlohmann::json to_json(const NurbsSurface& surface);
 
 /// Throws `std::runtime_error` naming the offending field if the document is
 /// malformed, and `std::invalid_argument` from the geometry constructors if the
 /// document is well-formed but describes an invalid curve or surface.
 NurbsCurve curve_from_json(const nlohmann::json& document);
+NurbsCurve2 curve2_from_json(const nlohmann::json& document);
 NurbsSurface surface_from_json(const nlohmann::json& document);
 
 /// File-level convenience. Writes pretty-printed JSON, since these files are

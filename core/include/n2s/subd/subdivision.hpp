@@ -152,6 +152,29 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+/// A tessellation of the limit surface, together with the parametric location
+/// each vertex came from.
+///
+/// The locations matter as much as the mesh: any scalar to be drawn on this
+/// surface -- distance to the NURBS, curvature, an isophote value -- is
+/// computed per location, and M5's error metrics sample the same way.
+struct TessellatedLimit {
+    PolyMesh mesh;
+    std::vector<LimitLocation> locations; ///< One per vertex, in the same order.
+    std::vector<Eigen::Vector3d> normals;
+};
+
+/// Samples every face of the limit surface on a `(samples_per_edge + 1)` square
+/// grid and stitches the samples into quads.
+///
+/// Vertices are *not* shared between faces: two faces meeting at an edge each
+/// produce their own copy of the points along it. They agree to rounding, so
+/// the surface looks and measures correctly, but the mesh is not topologically
+/// welded. Welding would have to merge by position, and merging by position is
+/// how a genuine crack between two patches gets silently closed -- which is
+/// precisely the defect R3 exists to detect.
+TessellatedLimit tessellate_limit(const SubdivisionSurface& surface, int samples_per_edge = 8);
+
 /// Control point positions as a `num_vertices x 3` matrix, so that
 /// `matrices.position * control_point_matrix(mesh)` gives the limit points.
 Eigen::MatrixXd control_point_matrix(const ControlMesh& mesh);

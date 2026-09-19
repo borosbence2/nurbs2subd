@@ -107,6 +107,18 @@ jobs:
       - name: Smoke-test the CLI
         run: ./build/${{ matrix.preset }}/bin/nurbs2subd --version
 
+      # Regenerates the committed cases into a scratch directory. Catches a
+      # change to the case definitions that the exporter can no longer write,
+      # which the committed-file test alone would not.
+      - name: Smoke-test case export
+        run: ./build/${{ matrix.preset }}/bin/nurbs2subd export-cases "${{ runner.temp }}/cases"
+
+      # The viewer's geometry is built headlessly and checked; the drawing
+      # itself is the one part of this project no automated test can judge.
+      - name: Smoke-test the viewer
+        if: matrix.graphics
+        run: ./build/${{ matrix.preset }}/bin/nurbs2subd_viewer --selftest
+
   format:
     name: clang-format
     runs-on: ubuntu-latest

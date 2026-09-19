@@ -1,4 +1,5 @@
 #include "n2s/io/nurbs_json.hpp"
+#include "n2s/trim/cases.hpp"
 
 #include "support/analytic_nurbs.hpp"
 
@@ -53,6 +54,10 @@ void check_same_surface(const NurbsSurface& a, const NurbsSurface& b) {
             REQUIRE((a.evaluate(u, v) - b.evaluate(u, v)).norm() < 1e-15);
         }
     }
+}
+
+n2s::NurbsCurve circle_for_dimension_check() {
+    return n2s::testing::full_circle(1.0);
 }
 
 } // namespace
@@ -126,11 +131,33 @@ TEST_CASE("malformed documents are rejected with the field named", "[io][json]")
         CHECK_THROWS_WITH(n2s::io::curve_from_json(document), ContainsSubstring("weights"));
     }
 
-    SECTION("a control point that is not a triple") {
+    SECTION("a control point of the wrong width") {
+        // The message names the width it wanted, because the same reader now
+        // serves 2D domain curves and 3D model curves and "wrong number of
+        // components" is ambiguous between them.
         nlohmann::json document = n2s::io::to_json(circle);
         document["control_points"][2] = {1.0, 2.0};
-        CHECK_THROWS_WITH(n2s::io::curve_from_json(document), ContainsSubstring("three numbers"));
+        CHECK_THROWS_WITH(n2s::io::curve_from_json(document), ContainsSubstring("3 numbers"));
     }
+}
+
+TEST_CASE("domain curves round-trip and are kept distinct from model curves", "[io][json]") {
+    const n2s::NurbsCurve2 arc = n2s::cases::circle_loop({0.5, 0.5}, 0.25).curves().front();
+    const nlohmann::json document = n2s::io::to_json(arc);
+    CHECK(document.at("format") == "n2s-curve2");
+
+    const n2s::NurbsCurve2 restored = n2s::io::curve2_from_json(document);
+    for (int i = 0; i <= 32; ++i) {
+        const double t = static_cast<double>(i) / 32.0;
+        INFO("t = " << t);
+        REQUIRE((arc.evaluate(t) - restored.evaluate(t)).norm() < 1e-15);
+    }
+
+    // A 2D curve must not read as a 3D one, or a trim loop would silently
+    // become model geometry.
+    CHECK_THROWS_WITH(n2s::io::curve_from_json(document), ContainsSubstring("n2s-curve"));
+    CHECK_THROWS_WITH(n2s::io::curve2_from_json(n2s::io::to_json(circle_for_dimension_check())),
+                      ContainsSubstring("n2s-curve2"));
 }
 
 TEST_CASE("a transposed control net is caught by the redundant shape fields", "[io][json]") {

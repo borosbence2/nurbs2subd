@@ -2,6 +2,8 @@ include(Catch)
 
 add_executable(n2s_tests
     test_build_info.cpp
+    io/test_case_json.cpp
+    io/test_data_cases.cpp
     io/test_nurbs_json.cpp
     nurbs/test_basis.cpp
     nurbs/test_curve.cpp
@@ -19,6 +21,11 @@ add_executable(n2s_tests
 
 # Lets tests include "support/analytic_nurbs.hpp" regardless of their own depth.
 target_include_directories(n2s_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+# The committed case files are test input, so the tests have to be able to find
+# them wherever the build tree happens to live.
+target_compile_definitions(n2s_tests PRIVATE
+    N2S_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../data")
 
 target_link_libraries(n2s_tests PRIVATE
     n2s::core

@@ -586,6 +586,55 @@ TEST_CASE("refined meshes export too", "[subd][io]") {
     std::filesystem::remove(path);
 }
 
+TEST_CASE("limit tessellation is consistent with direct evaluation", "[subd][subdivision]") {
+    const ControlMesh mesh = bumpy_grid(4, 4);
+    const SubdivisionSurface surface{mesh};
+
+    const int per_edge = 4;
+    const n2s::TessellatedLimit tessellation = n2s::tessellate_limit(surface, per_edge);
+
+    const std::size_t per_face = static_cast<std::size_t>((per_edge + 1) * (per_edge + 1));
+    CHECK(tessellation.mesh.vertices.size() == mesh.num_quads() * per_face);
+    CHECK(tessellation.locations.size() == tessellation.mesh.vertices.size());
+    CHECK(tessellation.normals.size() == tessellation.mesh.vertices.size());
+    CHECK(tessellation.mesh.quads.size() ==
+          mesh.num_quads() * static_cast<std::size_t>(per_edge * per_edge));
+
+    // Every vertex really is the limit point of the location recorded for it,
+    // which is what lets a scalar computed per location be drawn per vertex.
+    for (std::size_t i = 0; i < tessellation.locations.size(); i += 7) {
+        const Eigen::Vector3d direct = surface.evaluate_limit(tessellation.locations[i]).position;
+        INFO("vertex " << i);
+        REQUIRE((tessellation.mesh.vertices[i] - direct).norm() < 1e-14);
+    }
+
+    for (const Eigen::Vector3d& n : tessellation.normals) {
+        CHECK(n.norm() == Approx(1.0).epsilon(1e-9));
+    }
+}
+
+TEST_CASE("neighbouring tessellated faces agree along their shared edge", "[subd][subdivision]") {
+    // The mesh is deliberately not welded, so the duplicated vertices along a
+    // shared edge have to agree numerically instead. If they ever stop
+    // agreeing, the limit evaluation is face-dependent and the whole
+    // watertightness argument is in trouble.
+    const ControlMesh mesh = bumpy_grid(5, 5);
+    const SubdivisionSurface surface{mesh};
+
+    // Faces 0 and 1 of a 4x4 quad grid share the edge u in [0,1] at v = 1 of
+    // face 0, which is v = 0 of face 1.
+    for (int a = 0; a <= 8; ++a) {
+        const double u = static_cast<double>(a) / 8.0;
+        const Eigen::Vector3d from_first =
+            surface.evaluate_limit(LimitLocation{0, u, 1.0}).position;
+        const Eigen::Vector3d from_second =
+            surface.evaluate_limit(LimitLocation{1, u, 0.0}).position;
+
+        INFO("u = " << u);
+        CHECK((from_first - from_second).norm() < 1e-13);
+    }
+}
+
 TEST_CASE("invalid subdivision inputs are rejected", "[subd][subdivision]") {
     SECTION("a degenerate quad") {
         const std::vector<Eigen::Vector3d> vertices(4, Eigen::Vector3d::Zero());
