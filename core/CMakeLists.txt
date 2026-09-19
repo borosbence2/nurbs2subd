@@ -9,12 +9,34 @@ configure_file(
 
 add_library(n2s_core STATIC
     include/n2s/build_info.hpp
+    include/n2s/io/nurbs_json.hpp
+    include/n2s/tolerances.hpp
+    include/n2s/nurbs/basis.hpp
+    include/n2s/nurbs/curve.hpp
+    include/n2s/nurbs/differential.hpp
+    include/n2s/nurbs/knot_insertion.hpp
+    include/n2s/nurbs/knot_vector.hpp
+    include/n2s/nurbs/projection.hpp
+    include/n2s/nurbs/surface.hpp
+    src/io/nurbs_json.cpp
+    src/nurbs/basis.cpp
+    src/nurbs/curve.cpp
+    src/nurbs/differential.cpp
+    src/nurbs/knot_insertion.cpp
+    src/nurbs/knot_vector.cpp
+    src/nurbs/projection.cpp
+    src/nurbs/surface.cpp
+    src/nurbs/detail/binomial.hpp
     "${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.cpp")
 
 add_library(n2s::core ALIAS n2s_core)
 
-target_include_directories(n2s_core PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(n2s_core
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE
+        # Implementation-only headers under src/, e.g. nurbs/detail/binomial.hpp.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 target_link_libraries(n2s_core
     PUBLIC

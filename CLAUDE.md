@@ -36,7 +36,7 @@ core/        geometry library (no UI deps): nurbs/, trim/, subd/, fit/, metrics/
 apps/viewer/ Polyscope app
 apps/cli/    headless experiment runner (nurbs2subd)
 tests/       Catch2 tests, mirror core/ structure
-data/        test cases (JSON + legacy .bsc), small files only
+data/        test cases (JSON), small files only
 experiments/ configs/*.json, scripts/*.py; results/ is gitignored
 docs/        plan, notes, paper draft
 ```

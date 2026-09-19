@@ -44,24 +44,27 @@ Exit: CI green on all three configurations.
 
 ### M1 — NURBS core
 Tasks:
-- [ ] Knot vector type with validation (non-decreasing, correct length, clamped check).
-- [ ] B-spline basis functions and derivatives (Piegl & Tiller A2.2 / A2.3).
-- [ ] Rational curve and surface evaluation with 1st and 2nd derivatives.
-- [ ] Surface normal, first/second fundamental forms, mean and Gaussian curvature.
-- [ ] Closest-point projection onto a surface: grid initialization + Newton with
+- [x] Knot vector type with validation (non-decreasing, correct length, clamped check).
+- [x] B-spline basis functions and derivatives (Piegl & Tiller A2.2 / A2.3).
+- [x] Rational curve and surface evaluation with 1st and 2nd derivatives.
+- [x] Surface normal, first/second fundamental forms, mean and Gaussian curvature.
+- [x] Closest-point projection onto a surface: grid initialization + Newton with
       domain clamping; report convergence status.
-- [ ] Knot insertion (needed later for sampling and tests).
-- [ ] IO: JSON format (degree, knots, control points, weights) and a reader for the
-      legacy thesis `.bsc` format (degree; knots; count; control points).
+- [x] Knot insertion (needed later for sampling and tests).
+- [x] IO: JSON format (degree, knots, control points, weights). **Scope change
+      2026-09-19:** the legacy thesis `.bsc` reader is dropped; JSON is the only
+      format `core/` reads. See Progress for the reasoning and for how the
+      thesis surfaces get in.
 
 Tests (analytic oracles):
-- Partition of unity; derivatives against central finite differences.
-- Exact circle/cylinder via rational quadratic NURBS: radius error < 1e-12.
-- Bilinear and bicubic Bézier patches against closed-form Bernstein evaluation.
-- Curvature of a sphere patch (1/r) and a cylinder (1/(2r) mean).
-- Projection round trip: project `S(u,v)` recovers `(u,v)`.
+- [x] Partition of unity; derivatives against central finite differences.
+- [x] Exact circle/cylinder via rational quadratic NURBS: radius error < 1e-12.
+- [x] Bilinear and bicubic Bézier patches against closed-form Bernstein evaluation.
+- [x] Curvature of a sphere patch (1/r) and a cylinder (1/(2r) mean).
+- [x] Projection round trip: project `S(u,v)` recovers `(u,v)`.
 
-Exit: all tests pass; legacy thesis test surfaces load.
+Exit: all tests pass; a rational surface survives a JSON file round trip
+unchanged.
 
 ### M2 — Trimmed domain
 Tasks:
@@ -158,6 +161,11 @@ Exit: one command regenerates every table and plot from configs.
 Setup: both thesis test cases, with hand-authored quad layouts stored in JSON
 (layout generation is deliberately out of scope here). Include the edge-thirding
 refinement from the thesis as the baseline layout refinement.
+
+**Prerequisite (from the M1 scope change):** the two thesis surfaces must exist
+as `data/*.json` before this milestone starts. They are converted once, by a
+throwaway script, from whatever the thesis wrote; the converter is not committed
+and never enters `core/`. Blocked until the thesis files are to hand.
 
 Tasks:
 - [ ] Interpolation (square system): interior control points solved so that the
@@ -297,5 +305,66 @@ Exit: a draft ready to send to a co-author / reviewer.
   remove the DLL search order from the picture.
 - 2026-09-19 — Verified locally (Windows, GCC 14.2 / MinGW, Ninja): `dev`,
   `release` and `ci-nogfx` all configure, build and pass `ctest`.
-  **Exit criterion still open:** CI green on Linux GCC, Linux Clang and Windows
-  MSVC cannot be confirmed until the first push to GitHub.
+  **Exit criterion met:** on the first push, linux-gcc, linux-clang and
+  windows-msvc all passed, along with linux-core-nogfx and the sanitized
+  linux-asan job. The clang-format job failed on one line in
+  `build_info.cpp.in`; the file is now formatted and the job pins clang-format
+  to 19.1.7 so that the check cannot fail on version drift instead of on real
+  formatting.
+
+### M1 - NURBS core
+
+- 2026-09-19 - `KnotVector`: validation as a class invariant (degree, length,
+  monotonicity, degenerate domain, interior multiplicity above the degree),
+  `find_span` per Piegl & Tiller A2.1 including the `u == U[m-p]` special case,
+  multiplicity, clamped check, `uniform_clamped` factory. Tested against the
+  worked example in The NURBS Book section 2.5.
+- 2026-09-19 - B-spline basis functions (A2.2) and derivatives (A2.3). Oracles:
+  partition of unity, non-negativity, reduction to Bernstein polynomials on a
+  Bezier knot vector, derivative orders summing to zero, orders above the degree
+  vanishing, and central finite differences.
+- 2026-09-19 - `NurbsCurve` and `NurbsSurface`: rational evaluation and mixed
+  partials via the homogeneous derivatives (A3.2 / A3.6) and the rational
+  quotient rule (A4.2 / A4.4). Exactness oracles: circle, cylinder and a sphere
+  of revolution all reproduced to better than 1e-12; bilinear and bicubic Bezier
+  patches to 1e-14 against closed-form Bernstein evaluation.
+- 2026-09-19 - Differential geometry: unit normal, first and second fundamental
+  forms, mean, Gaussian and principal curvatures. Sphere gives 1/r, cylinder
+  1/(2r) mean and zero Gaussian, plane zero. Degenerate points (the poles of the
+  sphere of revolution) return `nullopt` rather than a silently wrong normal.
+  Recorded in the header: near an umbilic the principal curvatures lose half
+  their digits to cancellation under the square root, so error metrics and
+  figures should use mean and Gaussian curvature.
+- 2026-09-19 - Closest-point projection: grid search seeded per knot span, then
+  Newton on the two perpendicularity conditions with clamping to the domain.
+  Reports a status (`PointCoincident`, `Perpendicular`, `ClampedToBoundary`,
+  `Stalled`, `IterationLimit`, `DegenerateJacobian`) rather than a bare bool, so
+  that an unconverged projection cannot quietly flatter an error metric.
+  Round-trip oracle from the plan passes to 1e-9 in parameter space.
+- 2026-09-19 - Knot insertion (A5.1) for curves, and for surfaces by applying it
+  line by line to the control net. Carried out on the weighted control points,
+  which the exact-circle and exact-cylinder tests after insertion are there to
+  enforce. Also tested: geometry unchanged, and Bezier extraction putting a
+  control point exactly on the curve at full multiplicity.
+- 2026-09-19 - JSON IO for curves and surfaces, with `num_u`/`num_v` stated
+  redundantly so that a transposed control net is rejected instead of silently
+  producing a plausible surface. Malformed documents name the offending field.
+- 2026-09-19 - **Scope change, agreed with the user: `.bsc` support dropped.**
+  The plan described the format only as "degree; knots; count; control points",
+  which does not say whether a file holds a curve or a surface, whether a
+  surface repeats those fields per direction, whether weights appear at all, or
+  whether it is text or binary. Rather than guess, JSON becomes the only format
+  `core/` reads, because it is strictly better for what this project needs: it
+  is versioned and self-describing, it carries weights so rational surfaces
+  survive at all, it states the control net shape redundantly so a transposed
+  net is rejected, it is hand-editable and diffable in review, and it is already
+  covered by round-trip tests. A legacy binary parser in `core/` would have to
+  be carried, tested and trusted forever for two input files.
+  **How the thesis surfaces get in:** once the files are to hand they are
+  converted *once* by a throwaway script under `experiments/scripts/`, and the
+  resulting JSON is committed to `data/`. The converter is not part of `core/`
+  and does not need to be robust, only correct once, with the round trip through
+  `n2s::io` checking the result. Recorded as a prerequisite on R1.
+- 2026-09-19 - **M1 complete.** 53 tests pass on both the `dev` and `ci-nogfx`
+  presets. M2's synthetic case generator supplies plane, paraboloid, saddle and
+  cylinder test cases, so no milestone before R1 depends on the thesis data.

@@ -78,7 +78,7 @@ core/         geometry library, no UI dependencies
 apps/cli/     nurbs2subd — headless experiment runner
 apps/viewer/  Polyscope + ImGui viewer
 tests/        Catch2 v3 tests, mirroring core/
-data/         test cases (JSON, legacy .bsc); small files only
+data/         test cases (JSON); small files only
 experiments/  configs/*.json, scripts/*.py; results/ is gitignored
 docs/         research plan, notes, paper draft
 cmake/        warning, sanitizer, git-provenance and dependency modules

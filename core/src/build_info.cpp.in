@@ -24,4 +24,4 @@ std::string_view build_info_string() {
            "sanitizers=@N2S_SANITIZERS_ACTIVE@";
 }
 
-}  // namespace n2s
+} // namespace n2s

@@ -113,7 +113,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned to the version used locally. clang-format output drifts between
+      # major releases, and a check that fails on version drift rather than on
+      # real formatting problems is one people learn to ignore.
+      - name: Install clang-format
+        run: pipx install clang-format==19.1.7
+
       - name: Check formatting
         run: |
-          find core apps tests -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cpp.in' \) \
+          find core apps tests -type f \
+            \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cpp.in' \) \
             -print0 | xargs -0 clang-format --dry-run --Werror --style=file
