@@ -68,26 +68,29 @@ unchanged.
 
 ### M2 — Trimmed domain
 Tasks:
-- [ ] Trim loop = ordered list of 2D B-spline curves in the (u,v) domain.
-- [ ] Validation: closure gaps (report, snap below tolerance), self-intersection
+- [x] Trim loop = ordered list of 2D B-spline curves in the (u,v) domain.
+- [x] Validation: closure gaps (report, snap below tolerance), self-intersection
       check, orientation (outer CCW, holes CW; fix and warn if reversed).
-- [ ] Adaptive sampling of trim curves by 3D arc length *on the surface* and by
+- [x] Adaptive sampling of trim curves by 3D arc length *on the surface* and by
       curvature, with a max-segment-length parameter. Uniform sampling only as an
       option for comparison. Curve knots are always included as samples.
-- [ ] Constrained Delaunay triangulation of the trimmed domain (CDT), with holes,
-      plus a refinement pass (max area / min angle).
-- [ ] Map domain triangulation to 3D.
-- [ ] Synthetic test-case generator: plane, paraboloid, saddle, cylinder
+- [x] Constrained Delaunay triangulation of the trimmed domain (CDT), with holes,
+      plus a refinement pass (max area / min angle). **CDT ships no refinement;
+      ours is hand-written. See Progress.**
+- [x] Map domain triangulation to 3D.
+- [~] Synthetic test-case generator: plane, paraboloid, saddle, cylinder
       patches × trims (circular hole, quarter-arc corner as in Shen et al. Fig. 1,
-      L-shape, the two thesis domains).
+      L-shape, the two thesis domains). All but the thesis domains, which need
+      the thesis data (same prerequisite as R1).
 
 Tests:
-- Triangulated area equals the analytic trimmed area (e.g. square minus disc)
-  within sampling tolerance, and converges as tolerance shrinks.
-- Every domain triangle lies inside the trimmed region.
-- Reversed-orientation input yields the same triangulation after auto-fix.
+- [x] Triangulated area equals the analytic trimmed area (e.g. square minus disc)
+      within sampling tolerance, and converges as tolerance shrinks.
+- [x] Every domain triangle lies inside the trimmed region.
+- [x] Reversed-orientation input yields the same triangulation after auto-fix.
 
-Exit: all synthetic cases and both thesis domains triangulate cleanly.
+Exit: all synthetic cases triangulate cleanly (**met**: 12 of 12). Both thesis
+domains: blocked on the thesis data, as for R1.
 
 ### M3 — Subdivision core (OpenSubdiv wrapper)
 Tasks:
@@ -368,3 +371,74 @@ Exit: a draft ready to send to a co-author / reviewer.
 - 2026-09-19 - **M1 complete.** 53 tests pass on both the `dev` and `ci-nogfx`
   presets. M2's synthetic case generator supplies plane, paraboloid, saddle and
   cylinder test cases, so no milestone before R1 depends on the thesis data.
+- 2026-09-19 - M1 CI caught a real portability defect that neither GCC nor Clang
+  reports: MSVC treats the `return` after Catch2's `FAIL` as unreachable
+  (C4702), and `/WX` turns that into an error. Restructured so no branch is
+  unreachable. The Windows job is earning its place.
+
+### M2 - Trimmed domain
+
+- 2026-09-19 - `NurbsCurveT<Dim>` replaces the 3D-only `NurbsCurve`, with
+  `NurbsCurve = NurbsCurveT<3>` and `NurbsCurve2 = NurbsCurveT<2>`. Trim curves
+  live in the `(u, v)` domain, and duplicating the rational evaluation and
+  derivative code per dimension was the alternative. Knot insertion was
+  templated with it. All 53 M1 tests passed unchanged through the refactor.
+- 2026-09-19 - `TrimLoop` and `TrimRegion`, plus `reversed()` for curves (knot
+  vector mirrored within its own domain, control points and weights reversed).
+- 2026-09-19 - `validate_and_repair`: clamped-curve check, closure gaps (snapped
+  below tolerance, reported above), self-intersection, orientation, hole
+  containment and hole-hole overlap. Two deliberate ordering decisions:
+  self-intersection is tested *before* orientation, because a symmetric bowtie
+  has a signed area of exactly zero and would otherwise be reported as
+  "degenerate area" instead of as the self-intersection it is; and closure gaps
+  at or below 1e-15 are snapped silently, because a repair log full of 1e-17
+  entries is a log nobody reads.
+- 2026-09-19 - Adaptive trim sampling by recursive bisection, bounding both the
+  model-space chord length and the sagitta, with every knot guaranteed to
+  survive into the output. Uniform sampling kept as an option purely so the
+  experiments can quantify what adaptive sampling buys, that being defect 2 of
+  the thesis implementation. Measured on a cylinder: the curved edge collects
+  more than four times the samples of the straight ruling, where uniform
+  sampling gives both the same.
+- 2026-09-19 - CDT triangulation with holes, and `map_to_surface`. Boundary
+  vertices are stored first and the count is exposed, so boundary and interior
+  can be told apart by index; R3 needs exactly that to make two patches agree on
+  a seam.
+- 2026-09-19 - **Deviation: CDT 1.4.5 provides no mesh refinement.** The plan
+  assumed the library covered "max area / min angle"; it has no such entry
+  point. Written by hand as `triangulate_refined`: circumcentre insertion with a
+  centroid fallback, driven by model-space triangle area and domain-space
+  minimum angle. Deliberately *not* a full Ruppert refinement -- boundary
+  vertices are never added, moved or split, because the boundary discretisation
+  is what two patches must agree on for a watertight join, and a refinement
+  free to split boundary edges on its own schedule would break that agreement.
+  The cost is the formal angle guarantee, covered instead by a vertex budget.
+- 2026-09-19 - Bug worth recording, found by a failing area test. The first
+  refinement kept candidate points clear of a triangle's corners by a *relative*
+  margin, a fraction of that triangle's own shortest edge. For a sliver that
+  margin is tiny, so the circumcentre landed almost on an existing vertex and
+  produced a thinner sliver, which did it again. The mesh stayed a valid
+  triangulation with exactly the right domain area throughout, so nothing
+  complained -- but the worst 3D aspect ratio reached 1e13 and the cylinder area
+  came out 0.45% high. Fixed with an absolute minimum separation derived from
+  the vertex budget, `0.5 * sqrt(domain area / max_vertices)`, so the two cannot
+  contradict each other. Worst aspect ratio fell to 13, area error to 0.086%.
+  There is now a test asserting the aspect ratio directly, because the area
+  test only caught this by luck.
+- 2026-09-19 - **Finding that M5 needs to know about: a triangulation inscribed
+  in a smooth surface can have more area than the surface, not less.** That is
+  Schwarz's lantern, and anisotropic triangles on a cylinder are precisely the
+  construction. Every refined cylinder mesh here overshoots. Worse, refining is
+  not monotonically an improvement: the unrefined mesh is about 0.4% low, while
+  the refined mesh at the smallest vertex budget is nearly 3% high. Any
+  area-weighted error metric in M5 must bound the magnitude of its
+  discretisation error and never assume its sign.
+- 2026-09-19 - Performance: the refinement pass first ran the candidate-thinning
+  test as a linear scan over every accumulated vertex, which is quadratic in the
+  vertex count and took the test suite from 13 s to 436 s. Replaced with a
+  uniform grid at one cell per separation distance; the suite is back to 34 s.
+- 2026-09-19 - **M2 exit criterion met for the synthetic cases**: all 12 (4
+  surfaces x 3 trims) validate and triangulate cleanly, and the triangulated
+  area converges to the analytic `1 - pi r^2`. 90 tests pass on both the `dev`
+  and `ci-nogfx` presets. The two thesis domains remain blocked on the thesis
+  data, exactly as R1 is.

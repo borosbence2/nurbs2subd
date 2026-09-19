@@ -10,6 +10,10 @@ add_executable(n2s_tests
     nurbs/test_knot_vector.cpp
     nurbs/test_projection.cpp
     nurbs/test_surface.cpp
+    trim/test_sampling.cpp
+    trim/test_trim_loop.cpp
+    trim/test_triangulation.cpp
+    trim/test_validate.cpp
     support/analytic_nurbs.cpp)
 
 # Lets tests include "support/analytic_nurbs.hpp" regardless of their own depth.

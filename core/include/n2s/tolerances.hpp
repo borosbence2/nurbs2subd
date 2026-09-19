@@ -31,6 +31,22 @@ inline constexpr double kMinParametricSpan = 1e-12;
 /// (a pole of a sphere, a collapsed patch edge).
 inline constexpr double kDegenerateDerivative = 1e-10;
 
+/// Two consecutive trim curves in a loop count as joined when the gap between
+/// one's end and the next one's start falls below this. Parametric-domain
+/// units, so it is relative to the `(u, v)` box, not to model size.
+inline constexpr double kTrimClosure = 1e-9;
+
+/// A closure gap at or below this is what exact arithmetic would have produced
+/// had doubles been exact -- evaluating two rational arcs at a shared endpoint
+/// lands a few ulps apart. Such a gap is still snapped shut, but silently: a
+/// repair log full of 1e-17 entries trains the reader to ignore it, which is
+/// how the 1e-3 entry gets missed.
+inline constexpr double kNegligibleClosureGap = 1e-15;
+
+/// Below this a polygon's signed area is too small to give a reliable
+/// orientation, which means the loop is degenerate rather than merely small.
+inline constexpr double kMinLoopArea = 1e-14;
+
 /// Closest-point projection: the target counts as reached once the residual
 /// `|S(u,v) - P|` falls below this. Model-space, so callers working at a scale
 /// far from unity should scale it by the bounding box diagonal.

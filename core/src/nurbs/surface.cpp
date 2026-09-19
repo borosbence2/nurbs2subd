@@ -1,9 +1,8 @@
 #include "n2s/nurbs/surface.hpp"
 
 #include "n2s/nurbs/basis.hpp"
+#include "n2s/nurbs/detail/binomial.hpp"
 #include "n2s/tolerances.hpp"
-
-#include "nurbs/detail/binomial.hpp"
 
 #include <fmt/format.h>
 

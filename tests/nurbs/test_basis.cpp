@@ -48,11 +48,13 @@ double finite_difference(const KnotVector& kv, double u, std::size_t j, int orde
     if (order == 1) {
         return (value_at(u + h) - value_at(u - h)) / (2.0 * h);
     }
-    if (order == 2) {
-        return (value_at(u + h) - 2.0 * value_at(u) + value_at(u - h)) / (h * h);
-    }
-    FAIL("unsupported finite difference order");
-    return 0.0;
+
+    // Asserted rather than followed by an unreachable `return`: MSVC treats
+    // code after Catch2's FAIL as unreachable (C4702) and /WX turns that into
+    // an error, while GCC and Clang want the return statement. Leaving no
+    // unreachable branch at all satisfies both.
+    REQUIRE(order == 2);
+    return (value_at(u + h) - 2.0 * value_at(u) + value_at(u - h)) / (h * h);
 }
 
 } // namespace
