@@ -209,8 +209,10 @@ Tasks:
 - [x] Sample-location mapping from domain points to `(face,u,v)` via the layout's
       bilinear/parametric map; document the choice. `fit::LayoutLocator`, with
       the rationale on the class. See Progress.
-- [ ] Solver: sparse normal equations (`SimplicialLDLT`); fall back to `SparseQR`
+- [x] Solver: sparse normal equations (`SimplicialLDLT`); fall back to `SparseQR`
       when ill-conditioned; report the condition estimate.
+      `fit::solve_least_squares`, with `fit::umbrella_operator` for the fairness
+      term. See Progress for the boundary decision.
 - [ ] Parameter sweeps: sample density, λ, refinement level of the layout.
 - [ ] Plots: error vs control-point count (log–log), error vs λ, curvature quality vs λ.
 - [ ] Compare against R1 on identical layouts.
@@ -244,7 +246,72 @@ Exit: a clear recommendation for the fitting method, with numbers.
 - The bucket grid is cross-checked against a full scan over 3721 lattice points,
   because its failure mode is silent: a sample it misses is a row the system
   never gets, and the fit would then be built from fewer points than it reports.
-- 2026-09-20 - 190 tests pass on both the `dev` and `ci-nogfx` presets.
+#### Fairness and the solver (2026-09-20)
+
+- `fit::umbrella_operator`: `E_fair(V) = ||L V||^2` with `L` the uniform
+  umbrella (vertex minus the centroid of its edge-adjacent 1-ring), which is
+  the standard discrete thin-plate energy on a mesh. Three choices, each
+  stated on the header because each could have gone otherwise:
+  **uniform rather than cotangent weights**, since cotangent weights depend on
+  the vertex positions that are the unknowns and would make the fit a nonlinear
+  solve instead of the one sparse system the plan asks for;
+  **rows for interior vertices only**, since the umbrella at a boundary vertex
+  is one-sided and penalising it is a shrinkage term wearing a fairness label,
+  which would also fight the boundary constraint;
+  **edges, not diagonals**, so the stencil is the 1-ring and not the full
+  Catmull-Clark neighbourhood.
+- **The caveat, recorded rather than smoothed over.** The uniform umbrella
+  annihilates affine data only where the 1-ring is symmetric about the vertex.
+  At an extraordinary vertex, or anywhere the layout is stretched, a perfectly
+  flat configuration still carries a non-zero umbrella, so `lambda > 0` biases
+  those regions even with nothing to fair. Near the thesis layout's four
+  valence-5 vertices this is not a small effect. The lambda sweep measures it.
+
+- **Boundary decision (2026-09-20): constrained, to R1's values, by
+  elimination.** The plan specifies constrained boundary control points; they
+  are constrained to what R1's interpolating solve gives them, i.e. the values
+  making the limit boundary pass through the layout's boundary vertices, which
+  lie on the trim. Why those values:
+  R1 and R2 then have *identical* boundaries, so comparing them on one layout
+  isolates what the interior fit does -- a boundary that also moved would mix
+  two effects with no way to separate them afterwards;
+  R3 needs the seam control points fixed before either patch is fitted, and
+  this is that operation applied to every boundary at once;
+  and it costs nothing, because with EDGE_AND_CORNER the R1 square system
+  already decouples on the boundary, so its boundary block *is* the boundary
+  sub-solve -- no approximation is involved in reusing it.
+  Elimination rather than KKT: the fixed columns move to the right-hand side,
+  leaving a smaller system that is still symmetric positive definite, which is
+  what lets `SimplicialLDLT` be the fast path at all. A KKT system is
+  indefinite and would have needed a different factorisation for no gain.
+
+- Condition estimate: power iteration for the largest eigenvalue and inverse
+  power iteration (reusing the factorisation) for the smallest. It is reported
+  as what it is -- a **lower bound**, since both iterations approach from the
+  inside. That asymmetry is the useful one: a large estimate is evidence, a
+  small one only says nothing was found in the iterations allowed. The fallback
+  solves the *stacked* system `[sqrt(w) A ; sqrt(lambda') L]` with `SparseQR`
+  rather than running QR on the normal equations, which would rescue nothing:
+  it is forming `A^T A` that squares the conditioning.
+- `normalise_lambda` divides the data term by the sample count and the fairness
+  term by its row count, so that lambda means the same thing across the
+  sample-density sweep. Without it, raising the density alone weakens the
+  fairness term and a sweep over one axis silently moves the other.
+- Tested: a plane fitted to 1e-10 (a plane is in the span, so the residual is
+  the assembly and not the approximation); the boundary bitwise identical to
+  R1's, vertex for vertex; least squares beating interpolation away from the
+  layout vertices; lambda monotone in *both* directions (energy down, residual
+  up -- a lambda that only ever lowered the energy would mean the data term was
+  not connected to the solve); the QR fallback agreeing with the normal
+  equations to 1e-9 on the same problem; and sample rejections accounted for
+  exactly, since a fit built from a handful of surviving samples still returns
+  a mesh and the count is the only thing that says so.
+
+**Not yet measured:** whether this beats R1 on the thesis case, and what it
+does to the curvature deviation that R1's interpolating fit made so much worse.
+That needs the harness wiring and the sweeps, which are the next two tasks.
+
+- 2026-09-20 - 209 tests pass on both the `dev` and `ci-nogfx` presets.
 
 ### R3 — Watertight joins
 Key property: with boundary rules enabled, the limit boundary curve depends only on

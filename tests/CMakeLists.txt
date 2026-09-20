@@ -7,7 +7,9 @@ add_executable(n2s_tests
     io/test_nurbs_json.cpp
     metrics/test_seam_error.cpp
     metrics/test_runner.cpp
+    metrics/test_fairness.cpp
     metrics/test_layout.cpp
+    metrics/test_least_squares.cpp
     metrics/test_locate.cpp
     metrics/test_interpolate.cpp
     metrics/test_surface_error.cpp

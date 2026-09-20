@@ -11,7 +11,9 @@ add_library(n2s_core STATIC
     include/n2s/build_info.hpp
     include/n2s/experiment/runner.hpp
     include/n2s/fit/domain_layout.hpp
+    include/n2s/fit/fairness.hpp
     include/n2s/fit/layout.hpp
+    include/n2s/fit/least_squares.hpp
     include/n2s/fit/locate.hpp
     include/n2s/fit/interpolate.hpp
     include/n2s/fit/refine.hpp
@@ -37,8 +39,10 @@ add_library(n2s_core STATIC
     include/n2s/trim/triangulation.hpp
     include/n2s/trim/validate.hpp
     src/experiment/runner.cpp
+    src/fit/fairness.cpp
     src/fit/interpolate.cpp
     src/fit/layout.cpp
+    src/fit/least_squares.cpp
     src/fit/locate.cpp
     src/fit/refine.cpp
     src/io/case_json.cpp
