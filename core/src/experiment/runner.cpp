@@ -2,6 +2,7 @@
 
 #include "n2s/build_info.hpp"
 #include "n2s/fit/layout.hpp"
+#include "n2s/fit/refine.hpp"
 #include "n2s/subd/subdivision.hpp"
 #include "n2s/trim/validate.hpp"
 
@@ -126,6 +127,32 @@ void apply_override(nlohmann::json& document,
 
 } // namespace
 
+std::string to_string(FitMethod method) {
+    switch (method) {
+    case FitMethod::Interpolate:
+        return "interpolate";
+    case FitMethod::Pia:
+        return "pia";
+    case FitMethod::None:
+        break;
+    }
+    return "none";
+}
+
+FitMethod fit_method_from_string(const std::string& name) {
+    if (name == "interpolate") {
+        return FitMethod::Interpolate;
+    }
+    if (name == "pia") {
+        return FitMethod::Pia;
+    }
+    if (name == "none") {
+        return FitMethod::None;
+    }
+    throw std::runtime_error(
+        fmt::format("unknown fit method \"{}\"; expected one of none, interpolate, pia", name));
+}
+
 RunConfig run_config_from_json(const nlohmann::json& document,
                                const std::filesystem::path& base_directory) {
     RunConfig config;
@@ -147,6 +174,21 @@ RunConfig run_config_from_json(const nlohmann::json& document,
     config.layout_columns = value_or(document, "layout_columns", config.layout_columns);
     config.export_level = value_or(document, "export_level", config.export_level);
     config.write_samples = value_or(document, "write_samples", config.write_samples);
+
+    if (const auto found = document.find("fit"); found != document.end()) {
+        config.fit.method = fit_method_from_string(value_or<std::string>(*found, "method", "none"));
+        config.fit.layout_refinement =
+            value_or(*found, "layout_refinement", config.fit.layout_refinement);
+        config.fit.write_convergence =
+            value_or(*found, "write_convergence", config.fit.write_convergence);
+
+        if (const auto pia = found->find("pia"); pia != found->end()) {
+            config.fit.pia.max_iterations =
+                value_or(*pia, "max_iterations", config.fit.pia.max_iterations);
+            config.fit.pia.relative_update_tolerance = value_or(
+                *pia, "relative_update_tolerance", config.fit.pia.relative_update_tolerance);
+        }
+    }
 
     if (const auto found = document.find("sampling"); found != document.end()) {
         config.sampling.max_segment_length =
@@ -195,6 +237,13 @@ nlohmann::json to_json(const RunConfig& config) {
         {"layout_columns", config.layout_columns},
         {"export_level", config.export_level},
         {"write_samples", config.write_samples},
+        {"fit",
+         {{"method", to_string(config.fit.method)},
+          {"layout_refinement", config.fit.layout_refinement},
+          {"write_convergence", config.fit.write_convergence},
+          {"pia",
+           {{"max_iterations", config.fit.pia.max_iterations},
+            {"relative_update_tolerance", config.fit.pia.relative_update_tolerance}}}}},
         {"sampling",
          {{"mode", config.sampling.mode == SamplingMode::Uniform ? "uniform" : "adaptive"},
           {"max_segment_length", config.sampling.max_segment_length},
@@ -225,6 +274,14 @@ nlohmann::json to_json(const RunResult& result) {
         {"case", result.case_name},
         {"layout_from_case", result.layout_from_case},
         {"control_vertices", result.control_vertices},
+        {"fit",
+         {{"method", to_string(result.fit_method)},
+          {"layout_refinement", result.layout_refinement},
+          {"converged", result.fit_report.converged},
+          {"iterations", result.fit_report.iterations},
+          {"max_interpolation_error", result.fit_report.max_interpolation_error},
+          {"rms_interpolation_error", result.fit_report.rms_interpolation_error},
+          {"notes", result.fit_report.notes}}},
         {"domain_triangles", result.domain_triangles},
         {"surface_error",
          {{"parametric", stats_to_json(result.surface.parametric)},
@@ -268,38 +325,80 @@ RunResult run(const RunConfig& config, const std::filesystem::path& results_root
     });
     result.domain_triangles = domain.triangles.size();
 
-    // The layout: the case's own, when it has one, otherwise the naive grid
-    // baseline. Which of the two was used goes into the result, because the
-    // numbers mean quite different things.
-    const std::optional<fit::ResolvedLayout> from_case = timer.run("layout", [&] {
-        return fit::resolve_layout(loaded.layout, loaded.control_mesh, loaded.surface);
-    });
+    // The layout. A domain layout is preferred wherever one exists, because it
+    // is the only form that can be refined and fitted: refinement subdivides
+    // quads in the domain, and a fit needs the correspondence to know what
+    // each control point is supposed to approximate.
+    result.layout_from_case = loaded.layout.has_value() || loaded.control_mesh.has_value();
+    result.layout_refinement = config.fit.layout_refinement;
+    result.fit_method = config.fit.method;
 
-    result.layout_from_case = from_case.has_value();
-    ControlMesh layout =
-        from_case.has_value()
-            ? from_case->mesh
-            : fit::grid_layout(loaded.surface, config.layout_rows, config.layout_columns);
-    if (!result.layout_from_case) {
-        result.notes.push_back(fmt::format(
-            "the case ships no control mesh, so a {} x {} grid layout was generated. It is a "
-            "baseline, not a fit: Catmull-Clark pulls the limit surface inside its control "
-            "net, and that shrinkage dominates the error below.",
-            config.layout_rows,
-            config.layout_columns));
+    std::optional<fit::DomainLayout> domain_layout;
+    if (loaded.layout.has_value()) {
+        domain_layout = *loaded.layout;
+    } else if (!loaded.control_mesh.has_value()) {
+        domain_layout = fit::grid_domain_layout(config.layout_rows, config.layout_columns);
+        result.notes.push_back(
+            fmt::format("the case ships no layout, so a {} x {} grid was generated.",
+                        config.layout_rows,
+                        config.layout_columns));
     }
-    result.control_vertices = layout.num_vertices();
+
+    if (domain_layout.has_value() && config.fit.layout_refinement > 1) {
+        const std::size_t before = domain_layout->num_quads();
+        domain_layout = timer.run("refine_layout", [&] {
+            return fit::refine_quads(*domain_layout, config.fit.layout_refinement);
+        });
+        result.notes.push_back(fmt::format("layout refined {}x per side: {} quads -> {}",
+                                           config.fit.layout_refinement,
+                                           before,
+                                           domain_layout->num_quads()));
+    }
 
     metrics::DomainMap domain_map;
-    if (!result.layout_from_case) {
-        domain_map = metrics::grid_domain_map(config.layout_rows, config.layout_columns);
-    } else if (from_case->has_correspondence) {
-        domain_map = from_case->domain_map;
-    } else {
+    ControlMesh layout = [&] {
+        if (!domain_layout.has_value()) {
+            // A bare control mesh: usable, but neither refinable nor fittable,
+            // and it carries no correspondence.
+            result.notes.emplace_back(
+                "the case supplied bare control points rather than a domain layout, so it "
+                "cannot be refined or fitted and no correspondence is known. The parametric, "
+                "normal and curvature statistics are absent rather than guessed.");
+            return *loaded.control_mesh;
+        }
+
+        domain_map = fit::bilinear_domain_map(*domain_layout);
+
+        switch (config.fit.method) {
+        case FitMethod::Interpolate:
+            return timer.run("fit", [&] {
+                return fit::solve_interpolation(*domain_layout, loaded.surface, result.fit_report);
+            });
+        case FitMethod::Pia:
+            return timer.run("fit", [&] {
+                return fit::solve_pia(
+                    *domain_layout, loaded.surface, result.fit_report, config.fit.pia);
+            });
+        case FitMethod::None:
+            break;
+        }
+
         result.notes.emplace_back(
-            "the case supplied bare control points rather than a domain layout, so no "
-            "correspondence is known and the parametric, normal and curvature statistics are "
-            "absent rather than guessed.");
+            "no fit was applied, so the control points are simply the layout lifted onto the "
+            "surface. Catmull-Clark pulls its limit surface inside the control net, and that "
+            "shrinkage dominates the error below.");
+        return fit::lift(*domain_layout, loaded.surface);
+    }();
+
+    result.control_vertices = layout.num_vertices();
+
+    if (config.fit.method != FitMethod::None && !result.fit_report.converged) {
+        result.notes.emplace_back(
+            "the fit did not converge, so every error below describes a surface that is not "
+            "the one the method was supposed to produce");
+    }
+    for (const std::string& note : result.fit_report.notes) {
+        result.notes.push_back("fit: " + note);
     }
 
     const SubdivisionSurface limit{std::move(layout)};
@@ -332,17 +431,39 @@ RunResult run(const RunConfig& config, const std::filesystem::path& results_root
         limit.refine_uniform(config.export_level).write_obj(directory / "limit_surface.obj");
         map_to_surface(domain, loaded.surface).write_obj(directory / "trimmed_nurbs.obj");
 
+        // The per-iteration history behind the defect 5 comparison. Written
+        // whenever PIA ran, so a result that reports the finding can also
+        // show it.
+        if (config.fit.method == FitMethod::Pia && config.fit.write_convergence &&
+            domain_layout.has_value()) {
+            const fit::PiaHistory history =
+                fit::pia_error_history(*domain_layout, loaded.surface, config.fit.pia);
+
+            std::ofstream convergence(directory / "pia_convergence.csv");
+            if (!convergence) {
+                throw std::runtime_error("cannot open pia_convergence.csv for writing");
+            }
+            convergence << "iteration,max_error,max_update,distance_to_direct\n";
+            for (std::size_t i = 0; i < history.max_error.size(); ++i) {
+                convergence << fmt::format("{},{:.17g},{:.17g},{:.17g}\n",
+                                           i + 1,
+                                           history.max_error[i],
+                                           history.max_update[i],
+                                           history.distance_to_direct[i]);
+            }
+        }
+
         if (config.write_samples) {
             std::ofstream csv(directory / "samples.csv");
             if (!csv) {
                 throw std::runtime_error("cannot open samples.csv for writing");
             }
             csv << "face,u,v,domain_u,domain_v,x,y,z,parametric,geometric,normal_degrees,"
-                   "measured\n";
+                   "measured,mean_curvature,gaussian_curvature,curvature_measured\n";
             for (const metrics::ErrorSample& sample : metrics::sample_surface_error(
                      limit, loaded.surface, loaded.region, domain_map, config.error)) {
                 csv << fmt::format("{},{:.17g},{:.17g},{:.17g},{:.17g},{:.17g},{:.17g},{:.17g},"
-                                   "{:.17g},{:.17g},{:.17g},{}\n",
+                                   "{:.17g},{:.17g},{:.17g},{},{:.17g},{:.17g},{}\n",
                                    sample.location.face,
                                    sample.location.u,
                                    sample.location.v,
@@ -354,7 +475,10 @@ RunResult run(const RunConfig& config, const std::filesystem::path& results_root
                                    sample.parametric,
                                    sample.geometric,
                                    sample.normal_degrees,
-                                   sample.measured ? 1 : 0);
+                                   sample.measured ? 1 : 0,
+                                   sample.mean_curvature,
+                                   sample.gaussian_curvature,
+                                   sample.curvature_measured ? 1 : 0);
             }
         }
     });

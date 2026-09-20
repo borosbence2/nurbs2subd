@@ -182,8 +182,12 @@ std::vector<ErrorSample> sample_surface_error(const SubdivisionSurface& limit,
     }
 
     const TessellatedLimit tessellation = tessellate_limit(limit, options.samples_per_face);
-    const std::vector<LimitSample> samples =
-        limit.evaluate_limit(tessellation.locations, DerivativeOrder::First);
+
+    // Second derivatives whenever there is a correspondence, because curvature
+    // deviation needs them and evaluating the limit surface a second time to
+    // get them separately costs more than asking for them once.
+    const std::vector<LimitSample> samples = limit.evaluate_limit(
+        tessellation.locations, domain_map ? DerivativeOrder::Second : DerivativeOrder::First);
 
     // Polygonise the trim loops once for the containment test; TrimRegion
     // re-evaluates every curve per call, which is ruinous in a loop this long.
@@ -241,6 +245,23 @@ std::vector<ErrorSample> sample_surface_error(const SubdivisionSurface& limit,
             } else {
                 record.measured = false;
             }
+
+            const std::optional<SurfaceCurvature> nurbs_curvature = surface_curvature(
+                nurbs.derivatives(record.domain_point.x(), record.domain_point.y(), 2));
+            const std::optional<SurfaceCurvature> limit_curvature = curvature_from_derivatives(
+                samples[i].du, samples[i].dv, samples[i].duu, samples[i].duv, samples[i].dvv);
+
+            if (nurbs_curvature.has_value() && limit_curvature.has_value()) {
+                // Magnitudes: the two surfaces may carry opposite normal
+                // orientation, which flips the sign of mean curvature without
+                // any geometric difference. Gaussian curvature is
+                // orientation-free and is compared signed.
+                record.mean_curvature =
+                    std::abs(std::abs(limit_curvature->mean) - std::abs(nurbs_curvature->mean));
+                record.gaussian_curvature =
+                    std::abs(limit_curvature->gaussian - nurbs_curvature->gaussian);
+                record.curvature_measured = true;
+            }
         }
 
         const SurfaceProjection projection =
@@ -249,6 +270,17 @@ std::vector<ErrorSample> sample_surface_error(const SubdivisionSurface& limit,
             record.geometric = projection.distance;
         } else {
             record.measured = false;
+        }
+
+        // A sample the rest of the pipeline could not measure does not get to
+        // keep a curvature. Both of the ways `measured` goes false above --
+        // a degenerate normal, and a projection that did not converge -- land
+        // after the curvature is computed, so without this the curvature
+        // statistics would be taken over a strictly larger set of samples than
+        // every other statistic beside them, and a fit that made the surface
+        // harder to project onto would silently widen that set.
+        if (!record.measured) {
+            record.curvature_measured = false;
         }
 
         result.push_back(record);
@@ -289,39 +321,19 @@ SurfaceError measure_surface_error(const SubdivisionSurface& limit,
         }
     }
 
-    // Curvature deviation needs second derivatives on both surfaces, so it is
-    // a second pass rather than folded into the first.
+    // Curvature comes off the samples, which carry it whenever there is a
+    // correspondence. A sample that is measured but whose curvature is not
+    // counts as unmeasured here rather than being dropped, so the statistics
+    // report how many points they could not describe.
     if (domain_map) {
-        const TessellatedLimit tessellation = tessellate_limit(limit, options.samples_per_face);
-        const std::vector<LimitSample> second =
-            limit.evaluate_limit(tessellation.locations, DerivativeOrder::Second);
-
-        for (std::size_t i = 0; i < second.size(); ++i) {
-            if (!samples[i].measured) {
+        for (const ErrorSample& sample : samples) {
+            if (sample.curvature_measured) {
+                mean_curvature.add(sample.mean_curvature);
+                gaussian_curvature.add(sample.gaussian_curvature);
+            } else {
                 mean_curvature.add_unmeasured();
                 gaussian_curvature.add_unmeasured();
-                continue;
             }
-
-            const Eigen::Vector2d& domain_point = samples[i].domain_point;
-            const std::optional<SurfaceCurvature> nurbs_curvature =
-                surface_curvature(nurbs.derivatives(domain_point.x(), domain_point.y(), 2));
-            const std::optional<SurfaceCurvature> limit_curvature = curvature_from_derivatives(
-                second[i].du, second[i].dv, second[i].duu, second[i].duv, second[i].dvv);
-
-            if (!nurbs_curvature.has_value() || !limit_curvature.has_value()) {
-                mean_curvature.add_unmeasured();
-                gaussian_curvature.add_unmeasured();
-                continue;
-            }
-
-            // Magnitudes: the two surfaces may carry opposite normal
-            // orientation, which flips the sign of mean curvature without any
-            // geometric difference. Gaussian curvature is orientation-free and
-            // is compared signed.
-            mean_curvature.add(
-                std::abs(std::abs(limit_curvature->mean) - std::abs(nurbs_curvature->mean)));
-            gaussian_curvature.add(std::abs(limit_curvature->gaussian - nurbs_curvature->gaussian));
         }
     }
 

@@ -96,10 +96,27 @@ struct ErrorSample {
     double geometric = 0.0;
     double normal_degrees = 0.0;
     bool measured = true;
+
+    /// `||H_limit| - |H_nurbs||` and `|K_limit - K_nurbs|`, the curvature
+    /// deviations. Magnitudes for the mean because the two surfaces may carry
+    /// opposite normal orientation, which flips its sign without any
+    /// geometric difference; Gaussian curvature is orientation-free.
+    double mean_curvature = 0.0;
+    double gaussian_curvature = 0.0;
+
+    /// Whether the two above hold a measurement. Separate from `measured`
+    /// because curvature needs second derivatives on both surfaces and can
+    /// fail on its own, at a degenerate point where position and normal are
+    /// perfectly fine. A sample with `measured == false` never has curvature.
+    bool curvature_measured = false;
 };
 
 /// The same measurement, keeping every sample. Use when the samples themselves
 /// are wanted; `measure_surface_error` is the summary-only path.
+///
+/// Curvature is filled in only when `domain_map` is supplied, since it is a
+/// deviation from the NURBS at the corresponding point and there is no
+/// corresponding point without a correspondence.
 std::vector<ErrorSample> sample_surface_error(const SubdivisionSurface& limit,
                                               const NurbsSurface& nurbs,
                                               const TrimRegion& region,

@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -131,6 +132,103 @@ TEST_CASE("a run config round-trips through JSON", "[experiment][runner]") {
     CHECK(restored.error.samples_per_face == original.error.samples_per_face);
     CHECK(restored.sampling.mode == n2s::SamplingMode::Uniform);
     CHECK(restored.refinement.max_triangle_area == Approx(0.0));
+}
+
+TEST_CASE("the fit section round-trips through JSON", "[experiment][runner][fit]") {
+    RunConfig original = reference_config();
+    original.fit.method = n2s::experiment::FitMethod::Pia;
+    original.fit.layout_refinement = 3;
+    original.fit.pia.max_iterations = 17;
+    original.fit.pia.relative_update_tolerance = 1e-9;
+    original.fit.write_convergence = false;
+
+    const RunConfig restored =
+        n2s::experiment::run_config_from_json(n2s::experiment::to_json(original), {});
+
+    CHECK(restored.fit.method == n2s::experiment::FitMethod::Pia);
+    CHECK(restored.fit.layout_refinement == 3);
+    CHECK(restored.fit.pia.max_iterations == 17);
+    CHECK(restored.fit.pia.relative_update_tolerance == Approx(1e-9));
+    CHECK_FALSE(restored.fit.write_convergence);
+}
+
+TEST_CASE("an absent fit section means no fit", "[experiment][runner][fit]") {
+    // The baseline has to be what a config that says nothing about fitting
+    // gets, so that every earlier result stays comparable with a new one.
+    const RunConfig config =
+        n2s::experiment::run_config_from_json(nlohmann::json{{"case", "any.json"}}, {});
+    CHECK(config.fit.method == n2s::experiment::FitMethod::None);
+    CHECK(config.fit.layout_refinement == 1);
+}
+
+TEST_CASE("an unknown fit method is rejected by name", "[experiment][runner][fit]") {
+    // Silently falling back to no fit would produce an unfitted result under a
+    // config that asked for a fit, which is the worst of both.
+    const nlohmann::json document{{"case", "any.json"}, {"fit", {{"method", "leastsquares"}}}};
+    CHECK_THROWS_WITH(n2s::experiment::run_config_from_json(document, {}),
+                      ContainsSubstring("leastsquares"));
+}
+
+TEST_CASE("fitting through the runner lowers the measured error", "[experiment][runner][fit]") {
+    // End to end: the config section actually reaches the solver. A pipeline
+    // that parses "interpolate" and then measures an unfitted surface would
+    // pass every unit test above this one.
+    const ScratchResults results("fit");
+
+    RunConfig unfitted = reference_config();
+    unfitted.name = "unfitted";
+    const RunResult before = n2s::experiment::run(unfitted, results.path());
+
+    RunConfig fitted = reference_config();
+    fitted.name = "fitted";
+    fitted.fit.method = n2s::experiment::FitMethod::Interpolate;
+    const RunResult after = n2s::experiment::run(fitted, results.path());
+
+    INFO("unfitted " << before.surface.geometric.rms << ", fitted " << after.surface.geometric.rms);
+    CHECK(after.fit_method == n2s::experiment::FitMethod::Interpolate);
+    CHECK(after.fit_report.converged);
+    CHECK(after.surface.geometric.rms < before.surface.geometric.rms);
+}
+
+TEST_CASE("a PIA run writes its convergence history", "[experiment][runner][fit][defect5]") {
+    // The defect 5 figure is only as good as the data behind it, so the run
+    // that reports the finding has to emit the history it rests on.
+    const ScratchResults results("pia");
+
+    RunConfig config = reference_config();
+    config.fit.method = n2s::experiment::FitMethod::Pia;
+    const RunResult result = n2s::experiment::run(config, results.path());
+
+    const std::filesystem::path history = results.path() / result.run_id / "pia_convergence.csv";
+    REQUIRE(std::filesystem::exists(history));
+
+    std::ifstream stream(history);
+    std::string header;
+    REQUIRE(std::getline(stream, header));
+    CHECK(header == "iteration,max_error,max_update,distance_to_direct");
+
+    std::size_t rows = 0;
+    for (std::string line; std::getline(stream, line);) {
+        ++rows;
+    }
+    CHECK(rows > 0);
+}
+
+TEST_CASE("samples.csv carries the curvature columns", "[experiment][runner][fit]") {
+    // The curvature maps the plan asks for are drawn from this file, so the
+    // columns are part of the contract with the plotting scripts.
+    const ScratchResults results("curvature_columns");
+    const RunResult result = n2s::experiment::run(reference_config(), results.path());
+
+    std::ifstream stream(results.path() / result.run_id / "samples.csv");
+    std::string header;
+    REQUIRE(std::getline(stream, header));
+    CHECK(header == "face,u,v,domain_u,domain_v,x,y,z,parametric,geometric,normal_degrees,measured,"
+                    "mean_curvature,gaussian_curvature,curvature_measured");
+
+    std::string first;
+    REQUIRE(std::getline(stream, first));
+    CHECK(std::count(first.begin(), first.end(), ',') == 14);
 }
 
 TEST_CASE("a config path is resolved once, not twice", "[experiment][runner]") {

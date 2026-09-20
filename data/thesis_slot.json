@@ -465,6 +465,14 @@
     "holes": []
   },
   "color_ranges": {
+    "mean_curvature_deviation": [
+      0.0,
+      10.0
+    ],
+    "gaussian_curvature_deviation": [
+      0.0,
+      50.0
+    ],
     "mean_curvature": [
       -2.0,
       2.0

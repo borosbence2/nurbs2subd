@@ -185,10 +185,14 @@ Tasks:
       it, and it is what R3 needs.
 - [x] Progressive iterative approximation (PIA), with a stopping criterion on the
       max update.
-- [~] Convergence study: PIA error vs iteration count, overlaid with the direct
-      solve. The data is produced by `fit::pia_error_history` and the finding is
-      established (see Progress); the CLI and plot wiring is still to do.
-- [ ] Record: surface error, boundary error, curvature maps (fixed scale).
+- [x] Convergence study: PIA error vs iteration count, overlaid with the direct
+      solve. `fit::pia_error_history` produces it, a PIA run writes
+      `pia_convergence.csv`, and `experiments/scripts/plot_convergence.py`
+      draws it.
+- [x] Record: surface error, boundary error, curvature maps (fixed scale).
+      `samples.csv` carries the curvature deviations,
+      `experiments/scripts/plot_error_map.py` draws any of the scalars, and it
+      refuses to draw without an explicit range.
 
 Expected finding: PIA converges to the direct solution; the thesis differences
 were non-convergence. The report states this explicitly.
@@ -303,7 +307,62 @@ Thesis DoubleVB case, geometric error against the NURBS:
   approximation whose deviation dominates. Driving the boundary error down
   needs the boundary control points solved against the trim *curve* rather than
   against a finite set of points on it, which is R3's problem rather than R1's.
-- 2026-09-20 - 169 tests pass on both the `dev` and `ci-nogfx` presets.
+#### The fit is bought with curvature (2026-09-20)
+
+Once the curvature maps existed they said something the position errors did
+not. Thesis DoubleVB, thirded, deviation from the NURBS over the same 1038
+samples:
+
+| | geom rms | mean curv. max | mean curv. rms | mean curv. median | unmeasured |
+|---|---|---|---|---|---|
+| unfitted | 0.00340 | 5.59 | 0.819 | 0.347 | 761 |
+| interpolated | 0.00069 | 4566 | 344 | 0.549 | 978 |
+
+**Interpolation buys a five-fold improvement in position and pays for it with
+curvature.** This is not a handful of spikes at the four extraordinary
+vertices: the *median* deviation rises by 1.6x, 6% of samples exceed 10 and 1%
+exceed 1000. The fitted limit surface oscillates between the points it is
+forced through, which is the classic interpolation trade-off and is exactly
+what a square interpolating system with no fairness term should be expected to
+do.
+
+Two independent signs that this is real rather than a measurement artefact:
+the count of samples whose projection onto the NURBS fails to converge rises
+with it (761 to 978), which is what an oscillating surface does to a closest
+point search; and the worst samples sit on the same few faces in both runs, so
+they are a property of the region rather than of the solve.
+
+This is the case for R2. A least-squares fit with a fairness term is the plan's
+answer to it, and this table is the baseline it has to beat -- on curvature,
+not only on position. It also means R1's headline number should never be quoted
+as position error alone, which is the shape the thesis's claim took.
+
+#### Plumbing (2026-09-20)
+
+- `fit` config section: `method` (`none`, `interpolate`, `pia`),
+  `layout_refinement`, and `pia.{max_iterations, relative_update_tolerance}`.
+  An absent section means no fit, so every earlier result stays comparable; an
+  unknown method is rejected by name rather than silently falling back.
+- `metrics.json` records what was fitted and whether it converged; the runner
+  notes an unconverged fit in the result, because measuring one is how a bad
+  solve becomes a plausible number.
+- Curvature deviation moved into `metrics::ErrorSample`, so `samples.csv`
+  carries it and the summary reads it off the samples rather than recomputing
+  it in a second pass. One bug found and fixed on the way: curvature is
+  computed before the projection that can fail, so it needs clearing when the
+  sample ends up unmeasured. Without that the curvature statistics were taken
+  over 1795 samples where every statistic printed beside them used 1038, and a
+  fit that made the surface harder to project onto silently widened the gap.
+  There is a test on the invariant.
+- Curvature figures read the `*_curvature_deviation` colour ranges, not the
+  viewer's `mean_curvature`. The viewer colours signed
+  curvature; these columns are `|limit - nurbs|`. Sharing a key would have put
+  two incomparable figures on what looks like one scale, which is defect 6
+  wearing a different hat.
+- `experiments/configs/r1_doublevb_{unfitted,interpolate,pia}.json` are the
+  three comparison runs behind every number above.
+
+- 2026-09-20 - 178 tests pass on both the `dev` and `ci-nogfx` presets.
 
 ### DECISION GATE B
 Write `docs/notes/gate-b.md`: results so far, where the error concentrates

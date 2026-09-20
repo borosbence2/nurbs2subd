@@ -5,6 +5,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -280,6 +281,97 @@ TEST_CASE("without a domain map only the correspondence-free metrics are reporte
     CHECK(error.parametric.count == 0);
     CHECK(error.normal_degrees.count == 0);
     CHECK(error.mean_curvature.count == 0);
+}
+
+TEST_CASE("every sample carries the curvature the summary reports", "[metrics][curvature]") {
+    // The summary used to recompute curvature in a second pass of its own.
+    // Now it reads what the samples carry, so the two must still agree -- if
+    // they drift, a figure drawn from samples.csv stops describing the numbers
+    // in metrics.json, and nothing in either would say so.
+    const int size = 6;
+    const NurbsSurface saddle = n2s::cases::saddle(1.0, 0.5);
+    const TrimRegion region{n2s::cases::rectangle_loop({0.0, 0.0}, {1.0, 1.0})};
+    const n2s::metrics::DomainMap map = n2s::metrics::grid_domain_map(size, size);
+
+    // A control net that is *not* the surface, so the deviation is non-zero
+    // and an accidental agreement at zero cannot pass for a real one.
+    const SubdivisionSurface limit{planar_grid(size)};
+
+    const SurfaceError summary =
+        n2s::metrics::measure_surface_error(limit, saddle, region, map, cheap_options());
+    const std::vector<n2s::metrics::ErrorSample> samples =
+        n2s::metrics::sample_surface_error(limit, saddle, region, map, cheap_options());
+
+    double mean_max = 0.0;
+    double gaussian_max = 0.0;
+    std::size_t measured = 0;
+    for (const n2s::metrics::ErrorSample& sample : samples) {
+        // Curvature must never outlive the sample carrying it. Curvature is
+        // computed before the projection that can fail, so this is the
+        // invariant that keeps the curvature statistics over the same set of
+        // samples as every statistic printed next to them.
+        REQUIRE((!sample.curvature_measured || sample.measured));
+        if (!sample.curvature_measured) {
+            continue;
+        }
+        ++measured;
+        mean_max = std::max(mean_max, sample.mean_curvature);
+        gaussian_max = std::max(gaussian_max, sample.gaussian_curvature);
+    }
+
+    CHECK(summary.mean_curvature.count <= summary.geometric.count);
+
+    REQUIRE(measured > 0);
+    CHECK(summary.mean_curvature.count == measured);
+    CHECK(summary.mean_curvature.max == Approx(mean_max));
+    CHECK(summary.gaussian_curvature.max == Approx(gaussian_max));
+
+    // The saddle really is curved, so this is a measurement and not a zero.
+    CHECK(mean_max > 1e-6);
+}
+
+TEST_CASE("a sample with no correspondence carries no curvature", "[metrics][curvature]") {
+    // Curvature is a deviation from the NURBS at the corresponding point.
+    // Without a correspondence there is no such point, and reporting zero
+    // would read as a perfect curvature match.
+    const NurbsSurface saddle = n2s::cases::saddle(1.0, 0.5);
+    const SubdivisionSurface limit{planar_grid(5)};
+    const TrimRegion region{n2s::cases::rectangle_loop({0.0, 0.0}, {1.0, 1.0})};
+
+    const std::vector<n2s::metrics::ErrorSample> samples =
+        n2s::metrics::sample_surface_error(limit, saddle, region, {}, cheap_options());
+
+    REQUIRE_FALSE(samples.empty());
+    for (const n2s::metrics::ErrorSample& sample : samples) {
+        REQUIRE_FALSE(sample.curvature_measured);
+    }
+}
+
+TEST_CASE("an unmeasured sample never claims a curvature", "[metrics][curvature]") {
+    // A sample dropped for falling outside the trim must not carry curvature
+    // either, or a map drawn over the trimmed region would show values from
+    // outside it.
+    const int size = 5;
+    const NurbsSurface saddle = n2s::cases::saddle(1.0, 0.5);
+    const SubdivisionSurface limit{planar_grid(size)};
+
+    // A trim covering only a corner, so most samples fall outside it.
+    const TrimRegion region{n2s::cases::rectangle_loop({0.0, 0.0}, {0.4, 0.4})};
+
+    SurfaceErrorOptions options = cheap_options();
+    options.restrict_to_trimmed_region = true;
+
+    const std::vector<n2s::metrics::ErrorSample> samples = n2s::metrics::sample_surface_error(
+        limit, saddle, region, n2s::metrics::grid_domain_map(size, size), options);
+
+    std::size_t outside = 0;
+    for (const n2s::metrics::ErrorSample& sample : samples) {
+        if (!sample.measured) {
+            ++outside;
+            CHECK_FALSE(sample.curvature_measured);
+        }
+    }
+    REQUIRE(outside > 0);
 }
 
 // ---------------------------------------------------------------------------

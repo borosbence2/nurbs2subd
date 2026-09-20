@@ -1,5 +1,13 @@
 {
   "color_ranges": {
+    "mean_curvature_deviation": [
+      0.0,
+      10.0
+    ],
+    "gaussian_curvature_deviation": [
+      0.0,
+      50.0
+    ],
     "error": [
       0.0,
       0.05

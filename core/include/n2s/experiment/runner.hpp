@@ -1,5 +1,6 @@
 #pragma once
 
+#include "n2s/fit/interpolate.hpp"
 #include "n2s/io/case_json.hpp"
 #include "n2s/metrics/surface_error.hpp"
 #include "n2s/trim/sampling.hpp"
@@ -23,6 +24,37 @@
 /// all.
 namespace n2s::experiment {
 
+/// Which fit to apply to the layout before measuring.
+enum class FitMethod {
+    /// Control points left where lifting the layout put them. Not a fit; the
+    /// baseline the others have to beat.
+    None,
+    /// Solve the square system so the limit surface passes through every layout
+    /// vertex.
+    Interpolate,
+    /// The same system, reached iteratively. Present so that the two can be
+    /// compared, which is defect 5 of the thesis.
+    Pia,
+};
+
+std::string to_string(FitMethod method);
+FitMethod fit_method_from_string(const std::string& name);
+
+struct FitConfig {
+    FitMethod method = FitMethod::None;
+
+    /// Each layout quad is split into this many per side before fitting. 3 is
+    /// the thesis's edge thirding. A hand-authored layout is mostly boundary,
+    /// so without refinement there is barely an interior to fit.
+    int layout_refinement = 1;
+
+    fit::PiaOptions pia;
+
+    /// Write the per-iteration PIA convergence history. The data behind the
+    /// defect 5 finding, so a run that claims it should be able to show it.
+    bool write_convergence = true;
+};
+
 struct RunConfig {
     /// Name of the run. The result directory is `<name>-<timestamp>`.
     std::string name = "run";
@@ -33,6 +65,8 @@ struct RunConfig {
     /// Layout size, used only when the case ships no control mesh of its own.
     int layout_rows = 6;
     int layout_columns = 6;
+
+    FitConfig fit;
 
     SamplingOptions sampling;
     RefinementOptions refinement;
@@ -63,6 +97,14 @@ struct RunResult {
     std::size_t control_vertices = 0;
     std::size_t domain_triangles = 0;
     bool layout_from_case = false;
+
+    /// What was fitted, and how it went. `fit_report.converged` is worth
+    /// checking before quoting any error below it: an unconverged fit still
+    /// produces a surface, and measuring one is how a bad solve becomes a
+    /// plausible number.
+    FitMethod fit_method = FitMethod::None;
+    int layout_refinement = 1;
+    fit::FitReport fit_report;
 
     /// Wall-clock milliseconds per stage, in execution order.
     std::vector<std::pair<std::string, double>> timings_ms;
