@@ -1,0 +1,13 @@
+{
+  "name": "thesis_doublevb",
+  "case": "../../data/thesis_doublevb.json",
+
+  "_comment": "The thesis case with a hand-authored quad layout: 14 quads, four interior vertices all of valence 5. Because the layout is authored in the domain it carries its own correspondence, so the parametric, normal and curvature statistics are available here -- unlike a case that ships bare control points. Layout rows/columns are ignored: the case supplies the layout.",
+
+  "sampling": { "max_segment_length": 0.06, "max_sagitta": 0.006 },
+  "refinement": { "max_triangle_area": 0.02, "min_angle_degrees": 25.0, "max_vertices": 3000 },
+  "error": { "samples_per_face": 4, "nurbs_samples_per_side": 24 },
+  "boundary": { "samples_per_edge": 20, "trim_samples_per_curve": 128 },
+  "export_level": 2,
+  "write_samples": true
+}

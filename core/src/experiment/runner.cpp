@@ -10,6 +10,7 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -267,16 +268,18 @@ RunResult run(const RunConfig& config, const std::filesystem::path& results_root
     });
     result.domain_triangles = domain.triangles.size();
 
-    // The layout: the case's own control mesh when it has one, otherwise the
-    // naive grid baseline. Which of the two was used goes into the result,
-    // because the numbers mean quite different things.
-    result.layout_from_case = loaded.control_mesh.has_value();
-    ControlMesh layout = timer.run("layout", [&] {
-        if (loaded.control_mesh.has_value()) {
-            return *loaded.control_mesh;
-        }
-        return fit::grid_layout(loaded.surface, config.layout_rows, config.layout_columns);
+    // The layout: the case's own, when it has one, otherwise the naive grid
+    // baseline. Which of the two was used goes into the result, because the
+    // numbers mean quite different things.
+    const std::optional<fit::ResolvedLayout> from_case = timer.run("layout", [&] {
+        return fit::resolve_layout(loaded.layout, loaded.control_mesh, loaded.surface);
     });
+
+    result.layout_from_case = from_case.has_value();
+    ControlMesh layout =
+        from_case.has_value()
+            ? from_case->mesh
+            : fit::grid_layout(loaded.surface, config.layout_rows, config.layout_columns);
     if (!result.layout_from_case) {
         result.notes.push_back(fmt::format(
             "the case ships no control mesh, so a {} x {} grid layout was generated. It is a "
@@ -287,14 +290,16 @@ RunResult run(const RunConfig& config, const std::filesystem::path& results_root
     }
     result.control_vertices = layout.num_vertices();
 
-    const bool grid_correspondence = !result.layout_from_case;
-    const metrics::DomainMap domain_map =
-        grid_correspondence ? metrics::grid_domain_map(config.layout_rows, config.layout_columns)
-                            : metrics::DomainMap{};
-    if (!grid_correspondence) {
+    metrics::DomainMap domain_map;
+    if (!result.layout_from_case) {
+        domain_map = metrics::grid_domain_map(config.layout_rows, config.layout_columns);
+    } else if (from_case->has_correspondence) {
+        domain_map = from_case->domain_map;
+    } else {
         result.notes.emplace_back(
-            "no domain correspondence is known for a layout supplied by the case, so the "
-            "parametric, normal and curvature statistics are absent rather than guessed.");
+            "the case supplied bare control points rather than a domain layout, so no "
+            "correspondence is known and the parametric, normal and curvature statistics are "
+            "absent rather than guessed.");
     }
 
     const SubdivisionSurface limit{std::move(layout)};

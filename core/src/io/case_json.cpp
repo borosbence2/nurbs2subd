@@ -128,6 +128,49 @@ ControlMesh mesh_from_json(const nlohmann::json& value) {
     return mesh;
 }
 
+nlohmann::json layout_to_json(const fit::DomainLayout& layout) {
+    nlohmann::json vertices = nlohmann::json::array();
+    for (const Eigen::Vector2d& v : layout.vertices) {
+        vertices.push_back(nlohmann::json::array({v.x(), v.y()}));
+    }
+
+    nlohmann::json quads = nlohmann::json::array();
+    for (const std::array<int, 4>& q : layout.quads) {
+        quads.push_back(nlohmann::json::array({q[0], q[1], q[2], q[3]}));
+    }
+
+    return nlohmann::json{{"vertices", std::move(vertices)}, {"quads", std::move(quads)}};
+}
+
+fit::DomainLayout layout_from_json(const nlohmann::json& value) {
+    fit::DomainLayout layout;
+
+    const nlohmann::json& vertices = require(value, "vertices");
+    layout.vertices.reserve(vertices.size());
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        const nlohmann::json& entry = vertices[i];
+        if (!entry.is_array() || entry.size() != 2) {
+            throw std::runtime_error(
+                fmt::format("layout.vertices[{}] must be a (u, v) pair, got {}", i, entry.dump()));
+        }
+        layout.vertices.emplace_back(entry[0].get<double>(), entry[1].get<double>());
+    }
+
+    const nlohmann::json& quads = require(value, "quads");
+    layout.quads.reserve(quads.size());
+    for (std::size_t i = 0; i < quads.size(); ++i) {
+        const nlohmann::json& entry = quads[i];
+        if (!entry.is_array() || entry.size() != 4) {
+            throw std::runtime_error(fmt::format(
+                "layout.quads[{}] must be four vertex indices, got {}", i, entry.dump()));
+        }
+        layout.quads.push_back(
+            {entry[0].get<int>(), entry[1].get<int>(), entry[2].get<int>(), entry[3].get<int>()});
+    }
+
+    return layout;
+}
+
 } // namespace
 
 nlohmann::json to_json(const Case& test_case) {
@@ -145,6 +188,10 @@ nlohmann::json to_json(const Case& test_case) {
          nlohmann::json{{"outer", loop_to_json(test_case.region.outer())},
                         {"holes", std::move(holes)}}},
     };
+
+    if (test_case.layout.has_value()) {
+        document["layout"] = layout_to_json(*test_case.layout);
+    }
 
     if (test_case.control_mesh.has_value()) {
         document["control_mesh"] = mesh_to_json(*test_case.control_mesh);
@@ -195,10 +242,15 @@ Case case_from_json(const nlohmann::json& document) {
         .surface = surface_from_json(require(document, "surface")),
         .region =
             TrimRegion{loop_from_json(require(trim, "outer"), "trim.outer"), std::move(holes)},
+        .layout = std::nullopt,
         .control_mesh = std::nullopt,
         .camera = std::nullopt,
         .color_ranges = {},
     };
+
+    if (const auto found = document.find("layout"); found != document.end()) {
+        test_case.layout = layout_from_json(*found);
+    }
 
     if (const auto found = document.find("control_mesh"); found != document.end()) {
         test_case.control_mesh = mesh_from_json(*found);

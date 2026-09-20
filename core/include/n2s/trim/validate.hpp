@@ -9,8 +9,22 @@
 namespace n2s {
 
 struct TrimValidationOptions {
-    /// Joins closer than this are snapped shut; anything wider is an error.
+    /// Absolute floor on the closure tolerance. Joins closer than this are
+    /// snapped shut; anything wider is an error.
     double closure_tolerance = tol::kTrimClosure;
+
+    /// Closure tolerance as a fraction of the loop's own bounding box
+    /// diagonal, applied alongside the absolute floor above -- the larger of
+    /// the two wins.
+    ///
+    /// Without this the absolute floor is meaningless on anything but a
+    /// unit-sized model. A real trim loop spanning 450 units arrives with
+    /// joins that agree to about a part in 10^12, which is 5e-10 in absolute
+    /// terms: above the 1e-9 floor for some joins and below it for others, so
+    /// whether a loop validated would depend on where it happened to sit in
+    /// space. Every synthetic case in this project is unit-sized, which is
+    /// exactly why none of them could expose that.
+    double relative_closure_tolerance = 1e-9;
 
     /// Density of the polygonisation used for the orientation, containment and
     /// self-intersection tests.

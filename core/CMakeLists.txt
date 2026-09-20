@@ -10,6 +10,7 @@ configure_file(
 add_library(n2s_core STATIC
     include/n2s/build_info.hpp
     include/n2s/experiment/runner.hpp
+    include/n2s/fit/domain_layout.hpp
     include/n2s/fit/layout.hpp
     include/n2s/io/case_json.hpp
     include/n2s/io/nurbs_json.hpp

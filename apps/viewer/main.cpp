@@ -7,6 +7,7 @@
 // without a human looking at it.
 
 #include "n2s/build_info.hpp"
+#include "n2s/fit/layout.hpp"
 #include "n2s/io/case_json.hpp"
 #include "n2s/trim/cases.hpp"
 #include "n2s/trim/validate.hpp"
@@ -209,12 +210,15 @@ void draw_panel() {
             n2s::cases::square_with_circular_hole(n2s::cases::saddle(1.0, 0.6), 0.25);
         n2s::validate_and_repair(generated.region);
 
-        n2s::io::Case built_in{generated.name,
-                               generated.surface,
-                               generated.region,
-                               n2s::ControlMesh::grid(6, 6),
-                               std::nullopt,
-                               {}};
+        n2s::io::Case built_in{
+            .name = generated.name,
+            .surface = generated.surface,
+            .region = generated.region,
+            .layout = n2s::fit::grid_domain_layout(6, 6),
+            .control_mesh = std::nullopt,
+            .camera = std::nullopt,
+            .color_ranges = {},
+        };
         g_viewer.loaded = std::move(built_in);
         rebuild(*g_viewer.loaded);
         g_viewer.status = "Loaded the built-in saddle case.";
@@ -338,14 +342,17 @@ int selftest() {
         return 1;
     }
 
-    const n2s::io::Case test_case{generated.name,
-                                  generated.surface,
-                                  generated.region,
-                                  n2s::ControlMesh::grid(6, 6),
-                                  std::nullopt,
-                                  {{"mean_curvature", {-2.0, 2.0}},
-                                   {"gaussian_curvature", {-4.0, 1.0}},
-                                   {"error", {0.0, 0.5}}}};
+    const n2s::io::Case test_case{
+        .name = generated.name,
+        .surface = generated.surface,
+        .region = generated.region,
+        .layout = n2s::fit::grid_domain_layout(6, 6),
+        .control_mesh = std::nullopt,
+        .camera = std::nullopt,
+        .color_ranges = {{"mean_curvature", {-2.0, 2.0}},
+                         {"gaussian_curvature", {-4.0, 1.0}},
+                         {"error", {0.0, 0.5}}},
+    };
 
     SceneOptions options;
     options.nurbs_samples = 16;

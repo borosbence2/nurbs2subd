@@ -116,6 +116,70 @@ TEST_CASE("closure gaps are snapped below tolerance and reported above it", "[tr
     }
 }
 
+TEST_CASE("closure tolerance scales with the size of the loop", "[trim][validate]") {
+    // The defect real thesis data exposed. Every synthetic case in this project
+    // is unit-sized, so an absolute 1e-9 tolerance looked fine. On a loop
+    // spanning 450 units the joins of genuinely clean CAD output agree to about
+    // a part in 10^12, which is 5e-10 absolute -- close enough to the old fixed
+    // floor that whether a loop validated depended on where it sat in space.
+    const double span = 450.0;
+    const double rounding_scale_gap = 5e-10 * span; // ~2e-7, far above 1e-9
+
+    const auto big_square_with_gap = [&](double gap) {
+        return TrimLoop{{segment({0, 0}, {span, 0}),
+                         segment({span, 0}, {span, span}),
+                         segment({span, span}, {0, span}),
+                         segment({0, span}, {gap, 0})}};
+    };
+
+    SECTION("a gap at the rounding scale of a large model is snapped") {
+        TrimRegion region{big_square_with_gap(rounding_scale_gap)};
+        const n2s::TrimReport report = n2s::validate_and_repair(region);
+
+        INFO(report.to_string());
+        CHECK(report.ok());
+        CHECK(region.outer().worst_closure_gap() < 1e-9);
+    }
+
+    SECTION("a gap that is a real fraction of the model is still an error") {
+        // 0.2% of the span, which is the size of the four bad joins in the
+        // thesis trim loop. Scaling the tolerance must not turn a genuine
+        // defect into a silent repair.
+        TrimRegion region{big_square_with_gap(0.002 * span)};
+        const n2s::TrimReport report = n2s::validate_and_repair(region);
+
+        INFO(report.to_string());
+        CHECK_FALSE(report.ok());
+        // The message quotes the gap as a fraction of the loop, because an
+        // absolute figure means nothing without the scale beside it.
+        CHECK(any_contains(report.errors, "% of it"));
+    }
+
+    SECTION("the same relative gap behaves identically at unit scale") {
+        TrimRegion small{TrimLoop{{segment({0, 0}, {1, 0}),
+                                   segment({1, 0}, {1, 1}),
+                                   segment({1, 1}, {0, 1}),
+                                   segment({0, 1}, {0.002, 0})}}};
+        CHECK_FALSE(n2s::validate_and_repair(small).ok());
+    }
+}
+
+TEST_CASE("degenerate-area detection scales too", "[trim][validate]") {
+    // Area grows as the square of the loop, so a fixed threshold calls a small
+    // loop degenerate and lets a large sliver through.
+    const auto tiny_square = [](double side) {
+        return TrimLoop{{segment({0, 0}, {side, 0}),
+                         segment({side, 0}, {side, side}),
+                         segment({side, side}, {0, side}),
+                         segment({0, side}, {0, 0})}};
+    };
+
+    // A 1e-4 square has an area of 1e-8, which a fixed 1e-14 threshold would
+    // accept and a scaled one also accepts -- it is small, not degenerate.
+    TrimRegion small{tiny_square(1e-4)};
+    CHECK(n2s::validate_and_repair(small).ok());
+}
+
 TEST_CASE("a self-intersecting loop is rejected", "[trim][validate]") {
     // A symmetric bowtie: closed, but crossing itself. Its signed area is
     // exactly zero, which is why the self-intersection test has to run before

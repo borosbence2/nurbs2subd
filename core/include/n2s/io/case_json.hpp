@@ -1,5 +1,6 @@
 #pragma once
 
+#include "n2s/fit/domain_layout.hpp"
 #include "n2s/nurbs/surface.hpp"
 #include "n2s/subd/control_mesh.hpp"
 #include "n2s/trim/trim_loop.hpp"
@@ -45,8 +46,17 @@ struct Case {
     NurbsSurface surface;
     TrimRegion region;
 
-    /// The Catmull-Clark control mesh, when the case ships a hand-authored quad
-    /// layout. Absent for cases that only exercise the trimming pipeline.
+    /// The quad layout, authored in the parametric domain.
+    ///
+    /// Preferred over `control_mesh` whenever both could be given: a layout
+    /// carries its own domain correspondence, so the parametric, normal and
+    /// curvature metrics are available for it. A bare control mesh does not,
+    /// and no correspondence can be recovered from one after the fact.
+    std::optional<fit::DomainLayout> layout;
+
+    /// The Catmull-Clark control mesh, for a case that supplies control points
+    /// directly rather than a domain layout. Absent for cases that only
+    /// exercise the trimming pipeline.
     std::optional<ControlMesh> control_mesh;
 
     std::optional<CameraPose> camera;

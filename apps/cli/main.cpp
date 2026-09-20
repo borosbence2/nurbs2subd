@@ -128,6 +128,7 @@ int export_cases_command(const std::filesystem::path& directory) {
             .name = generated.name,
             .surface = generated.surface,
             .region = std::move(generated.region),
+            .layout = std::nullopt,
             .control_mesh = std::nullopt,
             .camera = std::nullopt,
             // Ranges have to come from somewhere, and a file with none would

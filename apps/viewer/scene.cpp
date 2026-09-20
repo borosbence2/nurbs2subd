@@ -1,5 +1,6 @@
 #include "scene.hpp"
 
+#include "n2s/fit/layout.hpp"
 #include "n2s/nurbs/differential.hpp"
 #include "n2s/nurbs/projection.hpp"
 #include "n2s/trim/validate.hpp"
@@ -218,12 +219,15 @@ Scene build_scene(const io::Case& test_case, const SceneOptions& options) {
     }
 
     // ---- Subdivision layers -------------------------------------------------
-    if (test_case.control_mesh.has_value()) {
-        scene.has_subdivision = true;
-        const SubdivisionSurface subdivision{*test_case.control_mesh};
+    const std::optional<fit::ResolvedLayout> resolved =
+        fit::resolve_layout(test_case.layout, test_case.control_mesh, test_case.surface);
 
-        scene.control_mesh =
-            PolyMesh{test_case.control_mesh->vertices(), test_case.control_mesh->quads()};
+    if (resolved.has_value()) {
+        scene.has_subdivision = true;
+        const ControlMesh& control = resolved->mesh;
+        const SubdivisionSurface subdivision{control};
+
+        scene.control_mesh = PolyMesh{control.vertices(), control.quads()};
 
         const TessellatedLimit tessellation =
             tessellate_limit(subdivision, options.limit_samples_per_face);
@@ -250,12 +254,12 @@ Scene build_scene(const io::Case& test_case, const SceneOptions& options) {
         scene.limit_scalars.push_back(std::move(stripes));
 
         // Extraordinary vertices: interior vertices whose valence is not 4.
-        for (std::size_t i = 0; i < test_case.control_mesh->num_vertices(); ++i) {
+        for (std::size_t i = 0; i < control.num_vertices(); ++i) {
             const auto vertex = static_cast<int>(i);
-            const int faces = test_case.control_mesh->face_count(vertex);
-            const bool boundary = test_case.control_mesh->is_boundary_vertex(vertex);
+            const int faces = control.face_count(vertex);
+            const bool boundary = control.is_boundary_vertex(vertex);
             if (!boundary && faces != 4) {
-                scene.extraordinary_vertices.push_back(test_case.control_mesh->vertices()[i]);
+                scene.extraordinary_vertices.push_back(control.vertices()[i]);
                 scene.extraordinary_valences.push_back(static_cast<double>(faces));
             }
         }

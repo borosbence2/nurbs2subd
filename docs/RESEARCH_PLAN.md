@@ -628,16 +628,96 @@ Exit: a draft ready to send to a co-author / reviewer.
 
 ---
 
+### Thesis data import (2026-09-20)
+
+- 2026-09-20 - **The legacy `.bsc` format is decoded.** It is text, not binary,
+  and the plan's one-line description was right: per curve a degree, then a
+  count and that many knots, then a count and that many `x y z` control points.
+  Verified across all four legacy files by checking that `numKnots - degree - 1`
+  equals the stated control point count for every one of 80-odd curves.
+- 2026-09-20 - **Defect found by real data: positional tolerances were
+  absolute.** The thesis trim loop spans about 450 units, where a clean CAD
+  join agrees to roughly 5e-10 in absolute terms -- straddling the fixed 1e-9
+  floor, so whether a loop validated depended on where it sat in space. Every
+  synthetic case in this project is unit-sized, which is exactly why none of
+  them could expose it. `TrimValidationOptions` now carries a relative
+  tolerance alongside the absolute floor, the degenerate-area threshold scales
+  as the square of the loop, and the error message quotes a gap as a percentage
+  of the loop as well as in absolute terms. Tests cover both scales.
+- 2026-09-20 - `fit::DomainLayout`: a quad layout authored in the *parametric
+  domain* rather than as 3D control points. This is what a layout actually is,
+  and it is what the thesis's own `DoubleVB.obj` turned out to be. Keeping it
+  in the domain means the correspondence is known by construction, so the
+  parametric, normal and curvature metrics are available for a hand-authored
+  layout -- previously they came back absent, because a control mesh arriving
+  as bare 3D points carries no correspondence and none can be recovered after
+  the fact. `bilinear_domain_map` supplies the mapping R2's first task asks
+  for, with the choice of bilinear documented on the function.
+- 2026-09-20 - `fit::resolve_layout` picks a domain layout over a bare control
+  mesh and hands back both the mesh and the correspondence, so the runner and
+  the viewer share one rule rather than each implementing their own.
+- 2026-09-20 - The case file format gained a `layout` field. Every aggregate
+  initialisation of `io::Case` moved to designated initialisers at the same
+  time, because adding a member silently shifted the meaning of the positional
+  ones in the viewer.
+- 2026-09-20 - `experiments/scripts/import_thesis_cases.py` converts the thesis
+  assets into committed case files. Four reconstruction decisions are recorded
+  in its docstring rather than buried in the data: surfaces are Coons patches
+  from the four boundary control polygons each `surface_*.txt` supplies (they
+  are not control nets); the DoubleVB domain is carried into `[0,1]^2` by a
+  *uniform* scale so its shape is preserved; DoubleVB is paired with the
+  surface from its own folder, that being the only evidence of the intended
+  pairing; and four trim joins are snapped.
+- 2026-09-20 - About those four joins: 18 of the 22 in the DoubleVB loop are
+  bitwise exact and 4 are off by 0.4 to 0.9 units, 0.1 to 0.2% of the model.
+  They are snapped to the layout's boundary vertices rather than to each
+  other's midpoint, because the loop *is* the layout's boundary and every other
+  endpoint already coincides with a layout vertex exactly. After the repair the
+  loop closes to zero.
+- 2026-09-20 - **Two thesis cases imported, one deliberately not.**
+  `data/thesis_slot.json` is folder 1: seven cubic Bezier segments closing
+  exactly, reversed to counter-clockwise on export so that loading it needs no
+  repair. `data/thesis_doublevb.json` is folder 3: 22 trim curves and a
+  **hand-authored 14-quad layout whose four interior vertices are all valence
+  5**. That is a real layout with real extraordinary vertices, and better than
+  anything that would have been authored from scratch for R1 and R5.
+- 2026-09-20 - Folder 2 (`pelda1`) is **not** imported, and the importer says
+  why in a comment rather than silently skipping it. Neither of its trim files
+  is an ordered loop: splitting them wherever consecutive curves fail to meet
+  gives 31 and 9 fragments, with gaps of 6 to 100 units and no consistent
+  orientation. Recovering a loop means deciding which fragment follows which
+  and bridging the gaps, which is guessing, and a trimmed region built on a
+  guessed boundary makes every number measured against it meaningless. Its
+  cage is 3D control points with no correspondence, so it cannot stand in
+  either.
+- 2026-09-20 - Both imported cases run end to end through `nurbs2subd run`.
+  DoubleVB reports `layout from case, 26 control vertices` with the parametric,
+  normal and curvature statistics populated, which is the point of the domain
+  layout work. The numbers are the *unfitted* baseline -- the layout's control
+  points are simply `S(u,v)`, so Catmull-Clark shrinkage dominates -- and are
+  what R1 has to beat.
+- 2026-09-20 - 158 tests pass on both the `dev` and `ci-nogfx` presets.
+
 ## GATE A status
 
-M0-M5 are complete except for the parts that need the MSc thesis data, which
-are the same parts R1 is blocked on:
+**M0-M5 are complete.** The thesis data arrived on 2026-09-20 and the three
+criteria that depended on it are now met or resolved:
 
-- M1: the legacy `.bsc` reader was dropped by agreement; the thesis surfaces
-  will be converted once to JSON when the files are to hand.
-- M2: the two thesis domains are not among the synthetic cases.
-- M4: the thesis figures cannot be reproduced without the thesis cases.
+- M1: the legacy `.bsc` reader was dropped by agreement and replaced by a
+  one-off converter, which is written, run, and its output committed.
+- M2: two thesis domains are imported as `data/thesis_slot.json` and
+  `data/thesis_doublevb.json`, and both validate and triangulate cleanly. A
+  third (`pelda1`) is not importable and the reason is recorded above.
+- M4: the thesis cases now exist, so their figures can be produced. Whether a
+  figure *looks* right still needs a human; nothing automated claims otherwise.
 
-Everything that does not depend on that data is done and tested. **Before Part B
-starts, the user has to supply the two thesis test cases**; without them R1
-cannot reproduce or correct the baseline it exists to correct.
+**Part B can start.** R1 has what it needs: a trimmed NURBS surface with a
+hand-authored quad layout carrying four valence-5 extraordinary vertices, a
+domain correspondence for it, and a measured unfitted baseline to improve on.
+
+One caveat to carry into R1: the imported surfaces are *reconstructions*. The
+thesis files give four boundary curves, not control nets, so the interior comes
+from a Coons construction (see the importer's docstring). R1's corrected
+baseline is therefore a corrected baseline for *these* surfaces, which are the
+thesis's boundaries with a documented interior -- not a bit-exact reproduction
+of whatever the thesis had in memory. That distinction belongs in the write-up.

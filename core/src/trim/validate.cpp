@@ -78,6 +78,21 @@ void snap_join(NurbsCurve2& before, NurbsCurve2& after) {
     after = NurbsCurve2{after.knots(), std::move(after_points), after.weights()};
 }
 
+/// Diagonal of a polygon's bounding box, the scale everything positional in
+/// this file is measured against.
+double bounding_diagonal(const std::vector<Eigen::Vector2d>& polygon) {
+    if (polygon.empty()) {
+        return 1.0;
+    }
+    Eigen::Vector2d low = polygon.front();
+    Eigen::Vector2d high = polygon.front();
+    for (const Eigen::Vector2d& p : polygon) {
+        low = low.cwiseMin(p);
+        high = high.cwiseMax(p);
+    }
+    return std::max((high - low).norm(), tol::kMinParametricSpan);
+}
+
 /// Checks one loop, repairing what it can. `expected` is the orientation the
 /// convention demands of this loop.
 void check_loop(TrimLoop& loop,
@@ -98,6 +113,14 @@ void check_loop(TrimLoop& loop,
         return;
     }
 
+    // Every positional tolerance below is scaled by the loop's own size. See
+    // TrimValidationOptions::relative_closure_tolerance for why an absolute
+    // one alone is not usable on real input.
+    const double scale = bounding_diagonal(loop.polygonise(options.samples_per_curve));
+    const double closure_tolerance =
+        std::max(options.closure_tolerance, options.relative_closure_tolerance * scale);
+    const double negligible_gap = std::max(tol::kNegligibleClosureGap, 1e-15 * scale);
+
     // Closure gaps, join by join.
     std::vector<NurbsCurve2>& curves = loop.mutable_curves();
     for (std::size_t i = 0; i < curves.size(); ++i) {
@@ -110,22 +133,24 @@ void check_loop(TrimLoop& loop,
         if (gap <= 0.0) {
             continue;
         }
-        if (gap <= tol::kNegligibleClosureGap) {
+        if (gap <= negligible_gap) {
             // Rounding noise, not a defect. Close it without saying so.
             if (options.snap_closure_gaps) {
                 snap_join(curves[i], curves[next]);
             }
             continue;
         }
-        if (gap > options.closure_tolerance) {
-            report.errors.push_back(
-                fmt::format("{}: gap of {:.3e} between curve {} and curve {}, above the closure "
-                            "tolerance of {:.3e}",
-                            label,
-                            gap,
-                            i,
-                            next,
-                            options.closure_tolerance));
+        if (gap > closure_tolerance) {
+            report.errors.push_back(fmt::format(
+                "{}: gap of {:.3e} between curve {} and curve {}, above the closure tolerance "
+                "of {:.3e} (loop spans {:.3e}, so the gap is {:.3g}% of it)",
+                label,
+                gap,
+                i,
+                next,
+                closure_tolerance,
+                scale,
+                100.0 * gap / scale));
             continue;
         }
         if (options.snap_closure_gaps) {
@@ -156,7 +181,9 @@ void check_loop(TrimLoop& loop,
 
     // Orientation.
     const double area = loop.signed_area(options.samples_per_curve);
-    if (std::abs(area) < tol::kMinLoopArea) {
+    // Area scales as the square of the loop, so the threshold has to as well;
+    // a fixed one calls a small loop degenerate and lets a large sliver pass.
+    if (std::abs(area) < tol::kMinLoopArea * scale * scale) {
         report.errors.push_back(fmt::format(
             "{}: encloses an area of only {:.3e}, too small to orient reliably; the loop is "
             "degenerate",

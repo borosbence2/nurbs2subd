@@ -1,0 +1,6 @@
+{ "name": "thesis_slot", "case": "../../data/thesis_slot.json",
+  "layout_rows": 6, "layout_columns": 6,
+  "sampling": { "max_segment_length": 0.08, "max_sagitta": 0.008 },
+  "refinement": { "max_triangle_area": 0.03, "max_vertices": 2500 },
+  "error": { "samples_per_face": 3, "nurbs_samples_per_side": 20 },
+  "boundary": { "samples_per_edge": 16 }, "write_samples": false }
