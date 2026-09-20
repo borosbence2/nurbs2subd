@@ -177,12 +177,17 @@ throwaway script, from whatever the thesis wrote; the converter is not committed
 and never enters `core/`. Blocked until the thesis files are to hand.
 
 Tasks:
-- [ ] Interpolation (square system): interior control points solved so that the
-      limit surface passes through the layout vertices mapped to the NURBS; boundary
-      handled as in Shen et al.
-- [ ] Progressive iterative approximation (PIA), with a stopping criterion on the
+- [x] Interpolation (square system): control points solved so that the limit
+      surface passes through the layout vertices mapped to the NURBS.
+      **Boundary decision (agreed 2026-09-20):** boundary control points are
+      *solved* so the limit boundary interpolates the trim, not fixed. See
+      Progress -- this turned out to simplify the solve rather than complicate
+      it, and it is what R3 needs.
+- [x] Progressive iterative approximation (PIA), with a stopping criterion on the
       max update.
-- [ ] Convergence study: PIA error vs iteration count, overlaid with the direct solve.
+- [~] Convergence study: PIA error vs iteration count, overlaid with the direct
+      solve. The data is produced by `fit::pia_error_history` and the finding is
+      established (see Progress); the CLI and plot wiring is still to do.
 - [ ] Record: surface error, boundary error, curvature maps (fixed scale).
 
 Expected finding: PIA converges to the direct solution; the thesis differences
@@ -227,6 +232,78 @@ Tasks:
       across the seam; measure the G1 defect before and after.
 
 Exit: zero gap demonstrated on both cases, with a bounded surface error.
+
+### R1 progress (2026-09-20)
+
+- 2026-09-20 - **Boundary policy decided: solve the boundary control points so
+  the limit boundary interpolates the trim.** The alternative was to fix them
+  at their lifted positions, which is simpler but leaves the limit boundary
+  inside the trim curve by the usual shrinkage -- and R3 needs two patches to
+  agree on a boundary that actually means something.
+  It turned out to make the solve *simpler*, not harder. The layout's boundary
+  vertices already lie on the trim, so their targets are on the trim too, and
+  the boundary needs no special case at all: one square system over every
+  vertex does it. With EDGE_AND_CORNER the boundary rows touch only boundary
+  columns, so the system decouples on its own.
+- 2026-09-20 - `fit::refine_quads` / `third_edges`: the thesis's edge thirding.
+  Necessary before any fit means anything on the thesis layout, which has 26
+  vertices of which 22 are boundary -- four free interior control points. A
+  thirded layout has 126 quads and 160 control points. Shared-edge vertices are
+  created once; a duplicate there would be a crack that Catmull-Clark reads as
+  two separate boundaries, so there is a test on it.
+- 2026-09-20 - `fit::solve_interpolation`: the square system of Halstead, Kass
+  and DeRose, built from the M3 limit stencil matrix restricted to the vertex
+  locations. `SparseLU`, because the limit stencil matrix is *not* symmetric --
+  the `SimplicialLDLT` the plan names belongs to R2's normal equations, which
+  are. Residual on the thesis case is 2.3e-16.
+- 2026-09-20 - `fit::solve_pia` and `fit::pia_error_history`.
+
+#### Defect 5 is settled
+
+The thesis compared progressive iteration against the direct solve as though
+they were different methods. They are the same square system, and the measured
+distance between them falls monotonically to machine precision:
+
+| PIA iteration | interpolation error | distance to direct solve |
+|---|---|---|
+| 1 | 6.01e-03 | 1.59e-02 |
+| 2 | 3.27e-03 | 9.95e-03 |
+| 5 | 9.11e-04 | 3.29e-03 |
+| 10 | 1.70e-04 | 7.61e-04 |
+| 25 | 6.34e-06 | 4.00e-05 |
+| 50 | 9.66e-08 | 6.62e-07 |
+| 126 | 8.98e-13 | 6.46e-12 |
+
+(thesis DoubleVB case, thirded: 126 quads, 160 control points)
+
+**PIA converges to the direct solution.** The thesis's apparent difference
+between the two was non-convergence and nothing else. Note the first row: at
+iteration 1 the distance to the direct solution is 1.6e-2, which is *larger
+than the total approximation error of the converged fit*. An early-stopped PIA
+therefore looks convincingly like a different and worse method, which is
+exactly the trap. There is a regression test asserting both the convergence and
+its monotonicity.
+
+#### What fitting buys, measured
+
+Thesis DoubleVB case, geometric error against the NURBS:
+
+| layout | | geom max | geom rms | boundary max |
+|---|---|---|---|---|
+| 14 quads, 26 cp | unfitted | 0.0443 | 0.0229 | 0.0642 |
+| | interpolated | 0.0346 | 0.0125 | 0.0416 |
+| 126 quads, 160 cp | unfitted | 0.00694 | 0.00340 | 0.0299 |
+| | interpolated | 0.00230 | 0.00069 | 0.0280 |
+
+- 2026-09-20 - **Finding worth carrying into R3: interpolation barely moves the
+  boundary error.** It falls 0.0299 to 0.0280 on the thirded layout, against a
+  five-fold improvement in surface RMS. That is the caveat on the header
+  spelled out in numbers: the limit boundary interpolates the trim *at the
+  layout's boundary vertices*, and between two of them it is a cubic B-spline
+  approximation whose deviation dominates. Driving the boundary error down
+  needs the boundary control points solved against the trim *curve* rather than
+  against a finite set of points on it, which is R3's problem rather than R1's.
+- 2026-09-20 - 169 tests pass on both the `dev` and `ci-nogfx` presets.
 
 ### DECISION GATE B
 Write `docs/notes/gate-b.md`: results so far, where the error concentrates
