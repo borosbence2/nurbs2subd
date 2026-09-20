@@ -213,11 +213,25 @@ Tasks:
       when ill-conditioned; report the condition estimate.
       `fit::solve_least_squares`, with `fit::umbrella_operator` for the fairness
       term. See Progress for the boundary decision.
-- [ ] Parameter sweeps: sample density, λ, refinement level of the layout.
-- [ ] Plots: error vs control-point count (log–log), error vs λ, curvature quality vs λ.
-- [ ] Compare against R1 on identical layouts.
+- [x] Parameter sweeps: sample density, λ, refinement level of the layout.
+      `sweep_r2_lambda.json`, `sweep_r2_samples.json`, `sweep_r2_refinement.json`.
+- [x] Plots: error vs control-point count (log–log), error vs λ, curvature quality vs λ.
+      `plot_error_vs_controlpoints.py`, `plot_lambda.py`, `plot_sample_density.py`.
+- [x] Compare against R1 on identical layouts. `compare_fits.py`, which compares
+      on the subset of samples every run measured -- see the projection finding
+      in Progress for why that qualification is not optional.
 
-Exit: a clear recommendation for the fitting method, with numbers.
+Exit: a clear recommendation for the fitting method, with numbers. **Met.**
+**Recommendation: least squares with the umbrella fairness term at lambda = 0.1,
+over roughly 50+ samples per side.** On the thesis case at a fixed layout it is
+192x better on curvature RMS, 300x on curvature max and 9.9x on normal deviation
+than the interpolating fit, while being 1.03x better on position RMS as well --
+there is no trade-off to weigh at this lambda. The two methods converge at the
+same order (~2.3 in the spacing), so the recommendation is about surface quality
+at a given control-point budget, not about asymptotic accuracy.
+Carried into R3: the boundary constraint is the mechanism R3 needs, and the
+projection defect below has to be settled before R3's 1e-12 seam criterion can
+mean anything.
 
 ### R2 progress
 
@@ -311,7 +325,144 @@ Exit: a clear recommendation for the fitting method, with numbers.
 does to the curvature deviation that R1's interpolating fit made so much worse.
 That needs the harness wiring and the sweeps, which are the next two tasks.
 
-- 2026-09-20 - 209 tests pass on both the `dev` and `ci-nogfx` presets.
+#### R2 answers R1's curvature finding (2026-09-20)
+
+Thesis DoubleVB, thirded layout, 160 control points. R1 and R2 share a boundary
+by construction, so everything below is the interior fit. **Measured on the 557
+samples every run measured** -- see the projection finding after the table:
+
+| fit | geom max | geom rms | normal max | curv max | curv rms |
+|---|---|---|---|---|---|
+| unfitted | 0.006922 | 0.003335 | 8.52 | 5.59 | 1.03 |
+| interpolate (R1) | 0.002276 | 0.0008097 | 79.6 | 4566 | 402.3 |
+| least squares, lambda = 0.1 | 0.002123 | 0.0007829 | 8.02 | 15.24 | 2.099 |
+
+Least squares against interpolation, on the same points:
+**curvature rms 192x better, curvature max 300x better, normal deviation 9.9x
+better, and position rms 1.03x better as well.** The trade-off R1 found is not
+inherent to fitting; it is what a square interpolating system does when it has
+no freedom left to spend. R2 gives the same control points a choice and they
+stop oscillating.
+
+The lambda sweep locates the knee at 0.1, the largest weight whose position RMS
+stays within 5% of the unfaired fit:
+
+| lambda | geom rms | curv rms | curv max | normal max |
+|---|---|---|---|---|
+| 0 | 0.0007016 | 17.17 | 193.2 | 33.6 |
+| 1e-3 | 0.0006929 | 16.59 | 185.8 | 31.2 |
+| 1e-2 | 0.0006494 | 11.40 | 123.3 | 21.6 |
+| **1e-1** | **0.0007012** | **3.131** | **34.9** | **10.3** |
+| 1 | 0.002803 | 3.271 | 75.9 | 9.08 |
+
+Note that lambda = 1 is worse than 0.1 on curvature *max* as well as on
+position: past the knee the fairness term stops fairing and starts fighting the
+data. The knee threshold (5%) is a judgement, so `plot_lambda.py` prints it
+with the answer rather than burying it.
+
+#### Convergence against control-point count
+
+Thesis DoubleVB, layout refinement 1 to 4, lambda = 0.1 for the least-squares
+runs. Geometric RMS against the NURBS:
+
+| control points | interpolate | least squares |
+|---|---|---|
+| 26 | 0.01252 | 0.01309 |
+| 79 | 0.001059 | 0.001257 |
+| 160 | 0.000692 | 0.0006462 |
+| 269 | 0.0002453 | 0.0002777 |
+
+Fitted over the last three points, both converge at **order ~2.3 in the control
+point spacing** (slope -1.16 and -1.22 in the count, which grows as the square
+of the density). The two methods are indistinguishable in position, and that is
+the correct result rather than a disappointing one: least squares does not
+change the approximation order, it changes what the surface does *between* the
+vertices, which is what the curvature comparison above measures and what
+position error alone cannot see.
+
+Curvature is deliberately **not** compared down this table. Each row is a
+different layout, so its error samples sit at different places and a different
+subset survives the projection; two rows are averages over two unrelated
+populations. Curvature comparisons need a shared layout, which is what
+`compare_fits.py` requires.
+
+#### Sample density, and a check on `normalise_lambda`
+
+| per side | samples used | per free control point | geom rms | condition |
+|---|---|---|---|---|
+| 16 | 95 | 1.0 | 0.0009211 | 167 |
+| 24 | 223 | 2.4 | 0.0007121 | 80.9 |
+| 32 | 415 | 4.4 | 0.0006546 | 51.2 |
+| 48 | 933 | 9.9 | 0.0006497 | 31.1 |
+| 64 | 1677 | 17.8 | 0.0006424 | 30.4 |
+| 96 | 3819 | 40.6 | 0.0006494 | 30.2 |
+| 128 | 6815 | 72.5 | 0.0006462 | 30.3 |
+
+The fit has converged in the sample count by about 48 per side (0.49% change
+over the last doubling), so 96 is comfortable and the sweeps above are not
+measuring their own sampling. The 16-per-side row is worth keeping in view: at
+one sample per free control point the data term alone does not determine the
+system and only the fairness term makes it solvable, which the condition
+estimate registers as well (167 against a plateau of 30).
+
+**`normalise_lambda` holds.** The fairness energy varies by 2.8% across a
+70-fold change in sample count, so lambda means the same thing at every density
+and the lambda sweep is not secretly a sweep of two parameters at once.
+`plot_sample_density.py` checks this on every run and says so either way; it was
+worth checking rather than asserting, since the failure mode would have been
+invisible in the lambda sweep itself.
+
+The condition estimate never approaches the `1e10` fallback threshold on this
+case, so `SparseQR` is exercised only by its test. A well-conditioned normal
+equation is the expected outcome for a layout this regular; R4's adaptive
+layouts are where that is likely to change.
+
+#### A defect in the error metric, found by R2 and not yet fixed
+
+Only **557 of 2016 samples (28%)** are measured by all three fits above, and the
+count falls as the fit improves: 1255 measured unfitted, 1038 interpolated, 831
+least-squares. A better surface being *harder* to measure is backwards, and the
+mechanism is this: `measure_surface_error` marks a sample unmeasured when the
+closest-point projection does not converge, and the projection's
+perpendicularity test is `|Su . r| / (|Su| |r|) <= 1e-12`, which divides by the
+residual. At this model's scale (bbox diagonal 1.63) the direction of a residual
+of size `|r|` is only resolved to about `1e-16 / |r|`; for `|r| ~ 7e-4` that is
+1.4e-13, within a factor of ten of the tolerance being tested. So the criterion
+sits on its own noise floor, and **shrinking the residual makes it harder to
+meet**. The flips confirm it: between the interpolating and least-squares fits
+391 samples were lost and 184 gained, spread through the interior rather than
+massed at a boundary, which is what a marginal threshold looks like and not what
+a geometric cause would look like.
+
+Consequences, and what has been done about them:
+
+- Every cross-fit comparison in this project must be taken over the samples both
+  runs measured. `compare_fits.py` now does that by default and prints the
+  per-run summary beside it so the difference is visible. On this comparison the
+  bias ran *against* least squares -- the common-subset ratios (192x, 300x) are
+  larger than the per-run ones (110x, 131x), and position error flips from
+  "1.01x worse" to "1.03x better".
+- The fix itself is **not** applied. Making the cosine tolerance respect the
+  precision actually available would change every measured number in the
+  project, including M5's regression test and all of R1's recorded results, and
+  that is a larger change than R2's scope. It is written up here so the decision
+  is taken deliberately rather than by accident. **This needs a decision before
+  R3**, whose seam-gap criterion is `1e-12 x model size` and so lives in exactly
+  the regime where this bites.
+
+#### Plumbing (2026-09-20)
+
+- `fit.method` gains `least_squares`, with `fit.least_squares.{samples_per_side,
+  lambda, normalise_lambda, max_condition, condition_iterations}`. The sweep's
+  dotted-key overrides reach all of them, so the three sweeps are plain configs.
+- `metrics.json` records the solver used, the sample accounting, the condition
+  estimate, the fairness energy and the lambda, so a sweep is readable from its
+  result files without its configs beside it.
+- A test asserts that a least-squares run and an interpolating run of the same
+  config report the *same* boundary error, which is the end-to-end form of the
+  boundary constraint.
+
+- 2026-09-20 - 212 tests pass on both the `dev` and `ci-nogfx` presets.
 
 ### R3 — Watertight joins
 Key property: with boundary rules enabled, the limit boundary curve depends only on

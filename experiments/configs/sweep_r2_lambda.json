@@ -1,0 +1,24 @@
+{
+  "name": "sweep_r2_lambda",
+
+  "_comment": "R2's fairness weight on the thesis case, at the layout R1 measured (thirded). The boundary is R1's at every point of the sweep, so everything that moves here is the interior fit. Read with plot_lambda.py: the question is not which lambda minimises the position error but where curvature stops improving without position error starting to pay for it.",
+
+  "base": {
+    "name": "r2_lambda",
+    "case": "../../data/thesis_doublevb.json",
+    "fit": {
+      "method": "least_squares",
+      "layout_refinement": 3,
+      "least_squares": { "samples_per_side": 96 }
+    },
+    "sampling": { "max_segment_length": 0.06, "max_sagitta": 0.006 },
+    "refinement": { "max_triangle_area": 0.02, "min_angle_degrees": 25.0, "max_vertices": 3000 },
+    "error": { "samples_per_face": 3, "nurbs_samples_per_side": 24 },
+    "boundary": { "samples_per_edge": 16, "trim_samples_per_curve": 128 },
+    "write_samples": false
+  },
+
+  "axes": {
+    "fit.least_squares.lambda": [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
+  }
+}

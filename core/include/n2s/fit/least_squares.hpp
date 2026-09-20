@@ -81,6 +81,10 @@ struct LeastSquaresReport {
 
     /// `||L V||^2` of the fitted mesh.
     double fairness_energy = 0.0;
+
+    /// The lambda this fit used, recorded here so a report is self-describing
+    /// and a sweep's results can be read without its config beside them.
+    double lambda = 0.0;
 };
 
 /// Least-squares fit of a layout to a surface, with a fairness term.

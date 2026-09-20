@@ -133,6 +133,8 @@ std::string to_string(FitMethod method) {
         return "interpolate";
     case FitMethod::Pia:
         return "pia";
+    case FitMethod::LeastSquares:
+        return "least_squares";
     case FitMethod::None:
         break;
     }
@@ -146,11 +148,14 @@ FitMethod fit_method_from_string(const std::string& name) {
     if (name == "pia") {
         return FitMethod::Pia;
     }
+    if (name == "least_squares") {
+        return FitMethod::LeastSquares;
+    }
     if (name == "none") {
         return FitMethod::None;
     }
-    throw std::runtime_error(
-        fmt::format("unknown fit method \"{}\"; expected one of none, interpolate, pia", name));
+    throw std::runtime_error(fmt::format(
+        "unknown fit method \"{}\"; expected one of none, interpolate, pia, least_squares", name));
 }
 
 RunConfig run_config_from_json(const nlohmann::json& document,
@@ -181,6 +186,19 @@ RunConfig run_config_from_json(const nlohmann::json& document,
             value_or(*found, "layout_refinement", config.fit.layout_refinement);
         config.fit.write_convergence =
             value_or(*found, "write_convergence", config.fit.write_convergence);
+
+        if (const auto ls = found->find("least_squares"); ls != found->end()) {
+            config.fit.least_squares.samples_per_side =
+                value_or(*ls, "samples_per_side", config.fit.least_squares.samples_per_side);
+            config.fit.least_squares.lambda =
+                value_or(*ls, "lambda", config.fit.least_squares.lambda);
+            config.fit.least_squares.normalise_lambda =
+                value_or(*ls, "normalise_lambda", config.fit.least_squares.normalise_lambda);
+            config.fit.least_squares.max_condition =
+                value_or(*ls, "max_condition", config.fit.least_squares.max_condition);
+            config.fit.least_squares.condition_iterations = value_or(
+                *ls, "condition_iterations", config.fit.least_squares.condition_iterations);
+        }
 
         if (const auto pia = found->find("pia"); pia != found->end()) {
             config.fit.pia.max_iterations =
@@ -243,7 +261,13 @@ nlohmann::json to_json(const RunConfig& config) {
           {"write_convergence", config.fit.write_convergence},
           {"pia",
            {{"max_iterations", config.fit.pia.max_iterations},
-            {"relative_update_tolerance", config.fit.pia.relative_update_tolerance}}}}},
+            {"relative_update_tolerance", config.fit.pia.relative_update_tolerance}}},
+          {"least_squares",
+           {{"samples_per_side", config.fit.least_squares.samples_per_side},
+            {"lambda", config.fit.least_squares.lambda},
+            {"normalise_lambda", config.fit.least_squares.normalise_lambda},
+            {"max_condition", config.fit.least_squares.max_condition},
+            {"condition_iterations", config.fit.least_squares.condition_iterations}}}}},
         {"sampling",
          {{"mode", config.sampling.mode == SamplingMode::Uniform ? "uniform" : "adaptive"},
           {"max_segment_length", config.sampling.max_segment_length},
@@ -281,7 +305,18 @@ nlohmann::json to_json(const RunResult& result) {
           {"iterations", result.fit_report.iterations},
           {"max_interpolation_error", result.fit_report.max_interpolation_error},
           {"rms_interpolation_error", result.fit_report.rms_interpolation_error},
-          {"notes", result.fit_report.notes}}},
+          {"notes", result.fit_report.notes},
+          {"least_squares",
+           {{"solver", fit::to_string(result.least_squares.solver)},
+            {"samples_requested", result.least_squares.samples_requested},
+            {"samples_used", result.least_squares.samples_used},
+            {"samples_outside_trim", result.least_squares.samples_outside_trim},
+            {"samples_outside_layout", result.least_squares.samples_outside_layout},
+            {"free_vertices", result.least_squares.free_vertices},
+            {"fixed_vertices", result.least_squares.fixed_vertices},
+            {"condition_estimate", result.least_squares.condition_estimate},
+            {"fairness_energy", result.least_squares.fairness_energy},
+            {"lambda", result.least_squares.lambda}}}}},
         {"domain_triangles", result.domain_triangles},
         {"surface_error",
          {{"parametric", stats_to_json(result.surface.parametric)},
@@ -378,6 +413,16 @@ RunResult run(const RunConfig& config, const std::filesystem::path& results_root
             return timer.run("fit", [&] {
                 return fit::solve_pia(
                     *domain_layout, loaded.surface, result.fit_report, config.fit.pia);
+            });
+        case FitMethod::LeastSquares:
+            return timer.run("fit", [&] {
+                ControlMesh fitted = fit::solve_least_squares(*domain_layout,
+                                                              loaded.surface,
+                                                              loaded.region,
+                                                              result.least_squares,
+                                                              config.fit.least_squares);
+                result.fit_report = result.least_squares.fit;
+                return fitted;
             });
         case FitMethod::None:
             break;

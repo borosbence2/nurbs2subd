@@ -1,0 +1,24 @@
+{
+  "name": "sweep_r2_refinement",
+
+  "_comment": "Error against control-point count, the log-log convergence plot. The layout refinement factor is the axis; the control-point count it produces is recorded per run, so the plot reads the count rather than the factor. Run once per fit method to get the three curves on one figure.",
+
+  "base": {
+    "name": "r2_refinement",
+    "case": "../../data/thesis_doublevb.json",
+    "fit": {
+      "method": "least_squares",
+      "least_squares": { "samples_per_side": 128, "lambda": 1e-2 }
+    },
+    "sampling": { "max_segment_length": 0.06, "max_sagitta": 0.006 },
+    "refinement": { "max_triangle_area": 0.02, "min_angle_degrees": 25.0, "max_vertices": 3000 },
+    "error": { "samples_per_face": 3, "nurbs_samples_per_side": 24 },
+    "boundary": { "samples_per_edge": 16, "trim_samples_per_curve": 128 },
+    "write_samples": false
+  },
+
+  "axes": {
+    "fit.method": ["interpolate", "least_squares"],
+    "fit.layout_refinement": [1, 2, 3, 4]
+  }
+}

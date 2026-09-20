@@ -1,6 +1,7 @@
 #pragma once
 
 #include "n2s/fit/interpolate.hpp"
+#include "n2s/fit/least_squares.hpp"
 #include "n2s/io/case_json.hpp"
 #include "n2s/metrics/surface_error.hpp"
 #include "n2s/trim/sampling.hpp"
@@ -35,6 +36,11 @@ enum class FitMethod {
     /// The same system, reached iteratively. Present so that the two can be
     /// compared, which is defect 5 of the thesis.
     Pia,
+    /// R2: minimise the squared distance to dense domain samples plus a
+    /// fairness term, over the interior control points, with the boundary
+    /// constrained to what `Interpolate` gives it. Over-determined, so unlike
+    /// the two above it does not pass through anything exactly.
+    LeastSquares,
 };
 
 std::string to_string(FitMethod method);
@@ -49,6 +55,7 @@ struct FitConfig {
     int layout_refinement = 1;
 
     fit::PiaOptions pia;
+    fit::LeastSquaresOptions least_squares;
 
     /// Write the per-iteration PIA convergence history. The data behind the
     /// defect 5 finding, so a run that claims it should be able to show it.
@@ -105,6 +112,11 @@ struct RunResult {
     FitMethod fit_method = FitMethod::None;
     int layout_refinement = 1;
     fit::FitReport fit_report;
+
+    /// Least-squares diagnostics: sample accounting, which solver ran, the
+    /// condition estimate and the fairness energy. Left at its default when
+    /// the fit was not a least-squares one.
+    fit::LeastSquaresReport least_squares;
 
     /// Wall-clock milliseconds per stage, in execution order.
     std::vector<std::pair<std::string, double>> timings_ms;

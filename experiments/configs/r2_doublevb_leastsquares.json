@@ -1,0 +1,19 @@
+{
+  "name": "r2_doublevb_leastsquares",
+  "case": "../../data/thesis_doublevb.json",
+
+  "_comment": "R2 on the thesis case, same thirded layout R1 used so the two are comparable. The boundary is R1's, by construction, so any difference below is what the interior least-squares fit buys over interpolation. Compare against r1_doublevb_interpolate and r1_doublevb_unfitted.",
+
+  "fit": {
+    "method": "least_squares",
+    "layout_refinement": 3,
+    "least_squares": { "samples_per_side": 96, "lambda": 0.0 }
+  },
+
+  "sampling": { "max_segment_length": 0.06, "max_sagitta": 0.006 },
+  "refinement": { "max_triangle_area": 0.02, "min_angle_degrees": 25.0, "max_vertices": 3000 },
+  "error": { "samples_per_face": 3, "nurbs_samples_per_side": 24 },
+  "boundary": { "samples_per_edge": 16, "trim_samples_per_curve": 128 },
+  "export_level": 2,
+  "write_samples": true
+}

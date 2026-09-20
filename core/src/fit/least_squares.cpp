@@ -180,6 +180,7 @@ ControlMesh solve_least_squares(const DomainLayout& layout,
     }
 
     report = LeastSquaresReport{};
+    report.lambda = options.lambda;
 
     // The boundary, taken from the R1 solve. The square system decouples on the
     // boundary, so its boundary block is the boundary sub-solve exactly; see

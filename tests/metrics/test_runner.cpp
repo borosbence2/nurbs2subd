@@ -161,6 +161,84 @@ TEST_CASE("an absent fit section means no fit", "[experiment][runner][fit]") {
     CHECK(config.fit.layout_refinement == 1);
 }
 
+TEST_CASE("the least-squares section round-trips through JSON", "[experiment][runner][fit]") {
+    RunConfig original = reference_config();
+    original.fit.method = n2s::experiment::FitMethod::LeastSquares;
+    original.fit.least_squares.samples_per_side = 31;
+    original.fit.least_squares.lambda = 2.5e-3;
+    original.fit.least_squares.normalise_lambda = false;
+    original.fit.least_squares.max_condition = 1e6;
+    original.fit.least_squares.condition_iterations = 7;
+
+    const RunConfig restored =
+        n2s::experiment::run_config_from_json(n2s::experiment::to_json(original), {});
+
+    CHECK(restored.fit.method == n2s::experiment::FitMethod::LeastSquares);
+    CHECK(restored.fit.least_squares.samples_per_side == 31);
+    CHECK(restored.fit.least_squares.lambda == Approx(2.5e-3));
+    CHECK_FALSE(restored.fit.least_squares.normalise_lambda);
+    CHECK(restored.fit.least_squares.max_condition == Approx(1e6));
+    CHECK(restored.fit.least_squares.condition_iterations == 7);
+}
+
+TEST_CASE("a least-squares run reports its sample accounting and solver",
+          "[experiment][runner][fit]") {
+    // The diagnostics have to survive the trip into metrics.json, because a
+    // sweep is read from those files and nothing else. A run that discarded
+    // most of its samples still produces numbers, and this is what says so.
+    const ScratchResults results("least_squares");
+
+    RunConfig config = reference_config();
+    config.fit.method = n2s::experiment::FitMethod::LeastSquares;
+    config.fit.least_squares.samples_per_side = 20;
+    config.fit.least_squares.lambda = 1e-4;
+
+    const RunResult result = n2s::experiment::run(config, results.path());
+
+    REQUIRE(result.fit_report.converged);
+    CHECK(result.least_squares.solver == n2s::fit::SolverUsed::NormalEquations);
+    CHECK(result.least_squares.samples_used > 0);
+    CHECK(result.least_squares.free_vertices > 0);
+    CHECK(result.least_squares.lambda == Approx(1e-4));
+    CHECK(result.least_squares.samples_used + result.least_squares.samples_outside_trim +
+              result.least_squares.samples_outside_layout ==
+          result.least_squares.samples_requested);
+
+    std::ifstream stream(results.path() / result.run_id / "metrics.json");
+    REQUIRE(stream.is_open());
+    nlohmann::json metrics;
+    stream >> metrics;
+
+    const nlohmann::json& ls = metrics.at("fit").at("least_squares");
+    CHECK(ls.at("solver") == "normal_equations");
+    CHECK(ls.at("samples_used").get<std::size_t>() == result.least_squares.samples_used);
+    CHECK(ls.at("lambda").get<double>() == Approx(1e-4));
+    CHECK(ls.at("condition_estimate").get<double>() >= 1.0);
+}
+
+TEST_CASE("a least-squares run keeps R1's boundary", "[experiment][runner][fit]") {
+    // The comparison the whole milestone rests on: R1 and R2 on one layout must
+    // differ only in the interior. If the boundary moved, the difference in
+    // surface error would mix two effects and no number below would separate
+    // them.
+    const ScratchResults results("boundary_match");
+
+    RunConfig interpolate = reference_config();
+    interpolate.name = "interpolate";
+    interpolate.fit.method = n2s::experiment::FitMethod::Interpolate;
+    const RunResult first = n2s::experiment::run(interpolate, results.path());
+
+    RunConfig least_squares = reference_config();
+    least_squares.name = "least_squares";
+    least_squares.fit.method = n2s::experiment::FitMethod::LeastSquares;
+    least_squares.fit.least_squares.samples_per_side = 20;
+    const RunResult second = n2s::experiment::run(least_squares, results.path());
+
+    INFO("interpolate " << first.boundary.max << ", least squares " << second.boundary.max);
+    CHECK(second.boundary.max == Approx(first.boundary.max));
+    CHECK(second.boundary.rms == Approx(first.boundary.rms));
+}
+
 TEST_CASE("an unknown fit method is rejected by name", "[experiment][runner][fit]") {
     // Silently falling back to no fit would produce an unfitted result under a
     // config that asked for a fit, which is the worst of both.
