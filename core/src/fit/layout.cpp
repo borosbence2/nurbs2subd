@@ -38,32 +38,30 @@ ControlMesh lift(const DomainLayout& layout, const NurbsSurface& surface) {
     return ControlMesh{std::move(points), layout.quads};
 }
 
+Eigen::Vector2d bilinear_point(const DomainLayout& layout, int face, double u, double v) {
+    const auto index = static_cast<std::size_t>(face);
+    if (face < 0 || index >= layout.quads.size()) {
+        throw std::invalid_argument(fmt::format(
+            "limit location names face {}, outside [0, {})", face, layout.quads.size()));
+    }
+
+    const std::array<int, 4>& quad = layout.quads[index];
+    const Eigen::Vector2d& a = layout.vertices[static_cast<std::size_t>(quad[0])];
+    const Eigen::Vector2d& b = layout.vertices[static_cast<std::size_t>(quad[1])];
+    const Eigen::Vector2d& c = layout.vertices[static_cast<std::size_t>(quad[2])];
+    const Eigen::Vector2d& d = layout.vertices[static_cast<std::size_t>(quad[3])];
+
+    return (1.0 - u) * (1.0 - v) * a + u * (1.0 - v) * b + u * v * c + (1.0 - u) * v * d;
+}
+
 metrics::DomainMap bilinear_domain_map(const DomainLayout& layout) {
     validate(layout);
 
     // Captured by value: the returned map outlives the call, and a layout that
     // changed underneath it would silently start reporting a correspondence
     // that no longer matches the control mesh.
-    return [vertices = layout.vertices,
-            quads = layout.quads](const LimitLocation& location) -> Eigen::Vector2d {
-        const auto face = static_cast<std::size_t>(location.face);
-        if (location.face < 0 || face >= quads.size()) {
-            throw std::invalid_argument(fmt::format(
-                "limit location names face {}, outside [0, {})", location.face, quads.size()));
-        }
-
-        const std::array<int, 4>& quad = quads[face];
-        const Eigen::Vector2d& a = vertices[static_cast<std::size_t>(quad[0])];
-        const Eigen::Vector2d& b = vertices[static_cast<std::size_t>(quad[1])];
-        const Eigen::Vector2d& c = vertices[static_cast<std::size_t>(quad[2])];
-        const Eigen::Vector2d& d = vertices[static_cast<std::size_t>(quad[3])];
-
-        // OpenSubdiv parameterises a quad face with (0,0) at its first vertex,
-        // u running toward the second and v toward the fourth. The blend below
-        // has to match that or the correspondence is transposed.
-        const double u = location.u;
-        const double v = location.v;
-        return (1.0 - u) * (1.0 - v) * a + u * (1.0 - v) * b + u * v * c + (1.0 - u) * v * d;
+    return [copy = layout](const LimitLocation& location) -> Eigen::Vector2d {
+        return bilinear_point(copy, location.face, location.u, location.v);
     };
 }
 

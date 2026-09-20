@@ -8,6 +8,7 @@ add_executable(n2s_tests
     metrics/test_seam_error.cpp
     metrics/test_runner.cpp
     metrics/test_layout.cpp
+    metrics/test_locate.cpp
     metrics/test_interpolate.cpp
     metrics/test_surface_error.cpp
     nurbs/test_basis.cpp

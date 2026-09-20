@@ -58,6 +58,20 @@ inline constexpr double kProjectionDistance = 1e-12;
 /// is off the surface, where the residual never reaches zero.
 inline constexpr double kProjectionCosine = 1e-12;
 
+/// How far outside a layout quad's local `[0,1]^2` an inverted domain point may
+/// land and still count as inside that quad. Parametric-domain units, like
+/// `kTrimClosure`. A sample sitting exactly on an edge shared by two quads
+/// inverts to `u` or `v` of 0 or 1 in both, and rounding decides which of the
+/// two it misses by an ulp; without slack it would belong to neither.
+inline constexpr double kLayoutContainment = 1e-9;
+
+/// The bilinear inversion treats a quad as a parallelogram, and solves a linear
+/// system instead of a quadratic, when the quadratic coefficient falls below
+/// this fraction of the quad's own size. Relative rather than absolute, because
+/// an absolute area threshold means something different at every model scale --
+/// the defect the trim tolerances already exposed once on real data.
+inline constexpr double kRelativeBilinearDegeneracy = 1e-12;
+
 } // namespace tol
 
 } // namespace n2s

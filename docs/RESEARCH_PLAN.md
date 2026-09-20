@@ -206,8 +206,9 @@ at dense domain samples mapped to `(face,u,v)`; `E_fair` = discrete thin-plate
 energy on the control mesh (optionally a limit-surface bending energy).
 
 Tasks:
-- [ ] Sample-location mapping from domain points to `(face,u,v)` via the layout's
-      bilinear/parametric map; document the choice.
+- [x] Sample-location mapping from domain points to `(face,u,v)` via the layout's
+      bilinear/parametric map; document the choice. `fit::LayoutLocator`, with
+      the rationale on the class. See Progress.
 - [ ] Solver: sparse normal equations (`SimplicialLDLT`); fall back to `SparseQR`
       when ill-conditioned; report the condition estimate.
 - [ ] Parameter sweeps: sample density, λ, refinement level of the layout.
@@ -215,6 +216,35 @@ Tasks:
 - [ ] Compare against R1 on identical layouts.
 
 Exit: a clear recommendation for the fitting method, with numbers.
+
+### R2 progress
+
+- 2026-09-20 - `fit::LayoutLocator`: domain point -> `(face, u, v)`, the inverse
+  of `bilinear_domain_map`. **The documented choice:** the inverse taken is of
+  the layout's own bilinear map rather than of some other parameterisation of
+  the quad, because (a) it is the map the metrics already use, so a sample means
+  the same thing to the fit and to the measurement that judges it -- fitting
+  against one correspondence and measuring against another produces a parametric
+  error that is partly a disagreement between conventions, and no number
+  separates the two; (b) it agrees with its neighbours along shared edges, so a
+  sample on an edge gets the same answer from either side; (c) it inverts in
+  closed form, so locating a sample cannot half-converge.
+  It inherits the forward map's caveat: bilinear is not area-preserving, so a
+  uniform grid of domain samples is *not* uniform in `(u, v)`, and a fit
+  weighting samples equally weights those regions unequally. R2's sample-density
+  sweep measures that rather than assuming it away.
+- The inversion is one quadratic in `v` (group the bilinear form as
+  `u(B + vC) + vD`, cross with `B + vC` to kill `u`), with `u` recovered by
+  projection rather than by dividing a chosen component. Roots are formed in the
+  cancellation-stable way, since the near-parallelogram case is the common one
+  on a refined layout. Parallelograms take an explicit linear branch.
+- Tested against closed-form answers on a rectangle, a parallelogram, a
+  trapezoid and a strongly tapered quad (where the wrong root is real, finite
+  and outside the quad), plus round trips on the thirded thesis layout.
+- The bucket grid is cross-checked against a full scan over 3721 lattice points,
+  because its failure mode is silent: a sample it misses is a row the system
+  never gets, and the fit would then be built from fewer points than it reports.
+- 2026-09-20 - 190 tests pass on both the `dev` and `ci-nogfx` presets.
 
 ### R3 — Watertight joins
 Key property: with boundary rules enabled, the limit boundary curve depends only on

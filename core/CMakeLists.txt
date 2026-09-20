@@ -12,6 +12,7 @@ add_library(n2s_core STATIC
     include/n2s/experiment/runner.hpp
     include/n2s/fit/domain_layout.hpp
     include/n2s/fit/layout.hpp
+    include/n2s/fit/locate.hpp
     include/n2s/fit/interpolate.hpp
     include/n2s/fit/refine.hpp
     include/n2s/io/case_json.hpp
@@ -38,6 +39,7 @@ add_library(n2s_core STATIC
     src/experiment/runner.cpp
     src/fit/interpolate.cpp
     src/fit/layout.cpp
+    src/fit/locate.cpp
     src/fit/refine.cpp
     src/io/case_json.cpp
     src/io/nurbs_json.cpp

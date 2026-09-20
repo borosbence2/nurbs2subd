@@ -33,4 +33,14 @@ struct DomainLayout {
     std::size_t num_quads() const { return quads.size(); }
 };
 
+/// The domain point that quad `face` maps `(u, v)` to.
+///
+/// OpenSubdiv parameterises a quad face with `(0,0)` at its first vertex, `u`
+/// running toward the second and `v` toward the fourth. Both
+/// `bilinear_domain_map` and `LayoutLocator` are defined in terms of this one
+/// function so that the map and its inverse cannot drift apart.
+///
+/// Throws `std::invalid_argument` if `face` is out of range.
+Eigen::Vector2d bilinear_point(const DomainLayout& layout, int face, double u, double v);
+
 } // namespace n2s::fit
